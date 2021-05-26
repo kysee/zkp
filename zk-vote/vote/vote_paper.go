@@ -1,4 +1,4 @@
-package votepaper
+package vote
 
 import (
 	"bytes"

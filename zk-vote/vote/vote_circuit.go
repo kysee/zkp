@@ -1,4 +1,4 @@
-package votepaper
+package vote
 
 import (
 	"github.com/consensys/gnark-crypto/ecc"

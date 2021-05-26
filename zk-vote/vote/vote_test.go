@@ -1,4 +1,4 @@
-package votepaper_test
+package vote_test
 
 import (
 	"bytes"
@@ -8,8 +8,8 @@ import (
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/accumulator/merkle"
 	"github.com/kysee/zkp/utils"
-	"github.com/kysee/zkp/vote/gov"
-	"github.com/kysee/zkp/vote/votepaper"
+	"github.com/kysee/zkp/zk-vote/gov"
+	"github.com/kysee/zkp/zk-vote/vote"
 	"github.com/stretchr/testify/require"
 	"log"
 	"math/big"
@@ -35,8 +35,8 @@ func init() {
 		citizens[i] = c
 	}
 
-	votepaper.InitializeVotePapers(len(citizens))
-	if err := votepaper.CompileCircuit(merkleCitizensDepth); err != nil {
+	vote.InitializeVotePapers(len(citizens))
+	if err := vote.CompileCircuit(merkleCitizensDepth); err != nil {
 		panic(err)
 	}
 
@@ -54,20 +54,20 @@ func TestVote(t *testing.T) {
 		proof, err := c.VoteProof(choice)
 		require.NoError(t, err)
 
-		err = votepaper.DoVote(proof, merkleCitizensDepth, gov.MerkleCitizensRootHash, c.VotePaperID, choice)
+		err = vote.DoVote(proof, merkleCitizensDepth, gov.MerkleCitizensRootHash, c.VotePaperID, choice)
 		require.NoError(t, err)
-		require.Equal(t, i+1, votepaper.GetVotePaperCnt())
+		require.Equal(t, i+1, vote.GetVotePaperCnt())
 
 		choiceResults[r] = choiceResults[r] + 1
 	}
 	totalChoiceCnt := 0
 	for i, cho := range choices {
-		require.Equal(t, choiceResults[i], votepaper.GetChoiceCnt(cho))
+		require.Equal(t, choiceResults[i], vote.GetChoiceCnt(cho))
 		totalChoiceCnt += choiceResults[i]
 		log.Printf("choice=%x, score=%d\n", cho, choiceResults[i])
 	}
 
-	vpcnt := votepaper.GetVotePaperCnt()
+	vpcnt := vote.GetVotePaperCnt()
 	require.Equal(t, totalChoiceCnt, vpcnt)
 
 	fchoice := []byte{0x0f}
@@ -81,37 +81,37 @@ func TestVote(t *testing.T) {
 
 		r = rand.Intn(3)
 		if r == 0 {
-			vpaper := votepaper.FindVotePaper(c.VotePaperID)
+			vpaper := vote.FindVotePaper(c.VotePaperID)
 			require.NotNil(t, vpaper)
 			oriChoice := vpaper.GetChoice()
 			choiceResults[int(oriChoice[0])-1] -= 1
 
-			err = votepaper.DoVote(proof, merkleCitizensDepth, gov.MerkleCitizensRootHash, c.VotePaperID, choice)
+			err = vote.DoVote(proof, merkleCitizensDepth, gov.MerkleCitizensRootHash, c.VotePaperID, choice)
 			require.NoError(t, err)
 			choiceResults[int(choice[0])-1] += 1
 		} else {
-			err = votepaper.DoVote(proof, merkleCitizensDepth, gov.MerkleCitizensRootHash, c.VotePaperID, fchoice)
+			err = vote.DoVote(proof, merkleCitizensDepth, gov.MerkleCitizensRootHash, c.VotePaperID, fchoice)
 			require.Error(t, err)
 			fcnt++
 		}
 
-		require.Equal(t, vpcnt, votepaper.GetVotePaperCnt())
+		require.Equal(t, vpcnt, vote.GetVotePaperCnt())
 	}
 
 	totalChoiceCnt = 0
 	for i, cho := range choices {
-		require.Equal(t, choiceResults[i], votepaper.GetChoiceCnt(cho))
+		require.Equal(t, choiceResults[i], vote.GetChoiceCnt(cho))
 		totalChoiceCnt += choiceResults[i]
 		log.Printf("choice=%x, score=%d\n", cho, choiceResults[i])
 	}
 
-	vpcnt = votepaper.GetVotePaperCnt()
+	vpcnt = vote.GetVotePaperCnt()
 	require.Equal(t, totalChoiceCnt, vpcnt)
 }
 
 func TestDupVote(t *testing.T) {
 	dupChoice := []byte{0xd}
-	backupVotePaperCnt := votepaper.GetVotePaperCnt()
+	backupVotePaperCnt := vote.GetVotePaperCnt()
 
 	rand.Seed(time.Now().UnixNano())
 	for i := 0; i < 100; i++ {
@@ -132,16 +132,16 @@ func TestDupVote(t *testing.T) {
 		proof, err = c.VoteProof(dupChoice, true)
 		require.NoError(t, err)
 
-		err = votepaper.DoVote(proof, merkleCitizensDepth, gov.MerkleCitizensRootHash, c.VotePaperID, dupChoice)
+		err = vote.DoVote(proof, merkleCitizensDepth, gov.MerkleCitizensRootHash, c.VotePaperID, dupChoice)
 		require.Error(t, err)
 	}
 
-	require.Equal(t, backupVotePaperCnt, votepaper.GetVotePaperCnt())
+	require.Equal(t, backupVotePaperCnt, vote.GetVotePaperCnt())
 }
 
 func TestFakeVote(t *testing.T) {
 	hackerChoice := []byte{0xf}
-	backupVotePaperCnt := votepaper.GetVotePaperCnt()
+	backupVotePaperCnt := vote.GetVotePaperCnt()
 	backupChoiceResults := make([]int, len(choiceResults))
 	copy(backupChoiceResults, choiceResults)
 
@@ -159,7 +159,7 @@ func TestFakeVote(t *testing.T) {
 
 		helperSet := merkle.GenerateProofHelper(proofSet, victimIdx, numLeaves)
 
-		var wtn votepaper.VoteCircuit
+		var wtn vote.VoteCircuit
 		wtn.CitizensRootHash.Assign(rootHash)
 		wtn.Path = make([]frontend.Variable, len(proofSet))
 		for i := 0; i < len(proofSet); i++ {
@@ -189,24 +189,24 @@ func TestFakeVote(t *testing.T) {
 		require.NoError(t, err)
 		wtn.AssignSig(sig)
 
-		proof, err := groth16.Prove(votepaper.R1CS, votepaper.ProvingKey, &wtn)
+		proof, err := groth16.Prove(vote.R1CS, vote.ProvingKey, &wtn)
 		require.Error(t, err)
 
-		proof, err = groth16.Prove(votepaper.R1CS, votepaper.ProvingKey, &wtn, true)
+		proof, err = groth16.Prove(vote.R1CS, vote.ProvingKey, &wtn, true)
 		require.NoError(t, err)
 
-		err = votepaper.DoVote(proof, merkleCitizensDepth, gov.MerkleCitizensRootHash, victim.VotePaperID, hackerChoice)
+		err = vote.DoVote(proof, merkleCitizensDepth, gov.MerkleCitizensRootHash, victim.VotePaperID, hackerChoice)
 		require.Error(t, err)
 	}
 
 	totalChoiceCnt := 0
 	for _, cho := range choices {
 		require.Equal(t, backupChoiceResults[cho[0]-1], choiceResults[cho[0]-1])
-		require.Equal(t, choiceResults[cho[0]-1], votepaper.GetChoiceCnt(cho))
+		require.Equal(t, choiceResults[cho[0]-1], vote.GetChoiceCnt(cho))
 		totalChoiceCnt += choiceResults[cho[0]-1]
 		log.Printf("choice=%x, score=%d\n", cho, choiceResults[cho[0]-1])
 	}
 
 	require.Equal(t, totalChoiceCnt, backupVotePaperCnt)
-	require.Equal(t, backupVotePaperCnt, votepaper.GetVotePaperCnt())
+	require.Equal(t, backupVotePaperCnt, vote.GetVotePaperCnt())
 }

@@ -13,7 +13,7 @@ import (
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/accumulator/merkle"
 	"github.com/kysee/zkp/utils"
-	"github.com/kysee/zkp/vote/votepaper"
+	"github.com/kysee/zkp/zk-vote/vote"
 	"math/big"
 )
 
@@ -94,7 +94,7 @@ func (c *Citizen) VoteProof(choice []byte, force ...bool) (groth16.Proof, error)
 
 	helperSet := merkle.GenerateProofHelper(proofSet, citizenIdx, numLeaves)
 
-	var wtn votepaper.VoteCircuit
+	var wtn vote.VoteCircuit
 	wtn.CitizensRootHash.Assign(rootHash)
 	wtn.Path = make([]frontend.Variable, len(proofSet))
 	for i := 0; i < len(proofSet); i++ {
@@ -126,7 +126,7 @@ func (c *Citizen) VoteProof(choice []byte, force ...bool) (groth16.Proof, error)
 		_force = force[0]
 	}
 
-	proof, err := groth16.Prove(votepaper.R1CS, votepaper.ProvingKey, &wtn, _force)
+	proof, err := groth16.Prove(vote.R1CS, vote.ProvingKey, &wtn, _force)
 	if err != nil {
 		return nil, err
 	}
