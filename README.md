@@ -2,7 +2,7 @@
 
 ### `zk-vote`
 
-This is voting system using ZKP.  
+This is a voting system using ZKP.  
 Voters can vote without revealing who they are.
 
 ### `zk-age`
