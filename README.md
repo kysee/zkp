@@ -3,7 +3,16 @@
 ### `zk-vote`
 
 This is a voting system using ZKP.  
-Voters can vote without revealing who they are.
+
+- Secret Ballot  
+  Voters can vote without revealing who they are.  
+  
+- Equal Ballot (One Man One Vote)  
+  One Man can not choose more than one.  
+  
+- Changeable Voting    
+  Voters can change their choices at any time during the election.  
+
 
 ### `zk-age`
 

@@ -51,17 +51,28 @@ func (cc *VoteCircuit) Define(curveID ecc.ID, cs *frontend.ConstraintSystem) err
 	}
 	cc.DIDPubKey.Curve = params
 
-	computedPub0 := twistededwards.Point{}
-	computedPub0.ScalarMulFixedBase(cs, cc.DIDPubKey.Curve.BaseX, cc.DIDPubKey.Curve.BaseY, cc.PrvKeyS1, cc.DIDPubKey.Curve)
+	//
+	// compute a public key from a privatek key's scalar.
+	// 	when private_key_scalar = s1 * 2**128 + s2,
+	//	c1 = s1 * base
+	// 	c2 = s2 * base
+	// 	public key = c1 * 2**128 + c2
 
-	computedPub1 := twistededwards.Point{}
-	computedPub1.ScalarMulNonFixedBase(cs, &computedPub0, cc.E128, cc.DIDPubKey.Curve)
+	// compute c1 = s1 * base
+	c1 := twistededwards.Point{}
+	c1.ScalarMulFixedBase(cs, cc.DIDPubKey.Curve.BaseX, cc.DIDPubKey.Curve.BaseY, cc.PrvKeyS1, cc.DIDPubKey.Curve)
 
-	computedPub2 := twistededwards.Point{}
-	computedPub2.ScalarMulFixedBase(cs, cc.DIDPubKey.Curve.BaseX, cc.DIDPubKey.Curve.BaseY, cc.PrvKeyS2, cc.DIDPubKey.Curve)
+	// compute c128 = c1 * 2**128
+	c128 := twistededwards.Point{}
+	c128.ScalarMulNonFixedBase(cs, &c1, cc.E128, cc.DIDPubKey.Curve)
 
+	// compute c2 = s2 * base
+	c2 := twistededwards.Point{}
+	c2.ScalarMulFixedBase(cs, cc.DIDPubKey.Curve.BaseX, cc.DIDPubKey.Curve.BaseY, cc.PrvKeyS2, cc.DIDPubKey.Curve)
+
+	// compute pubkey = c128 + c2
 	computedPub := twistededwards.Point{}
-	computedPub.AddGeneric(cs, &computedPub1, &computedPub2, cc.DIDPubKey.Curve)
+	computedPub.AddGeneric(cs, &c128, &c2, cc.DIDPubKey.Curve)
 	computedPub.MustBeOnCurve(cs, cc.DIDPubKey.Curve)
 
 	//cs.Println("DIDPubKey.A.X     ", cc.DIDPubKey.A.X)
