@@ -5,16 +5,21 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"os"
+
 	"github.com/consensys/gnark-crypto/accumulator/merkletree"
+	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark-crypto/ecc/bn254/twistededwards"
 	"github.com/consensys/gnark-crypto/ecc/bn254/twistededwards/eddsa"
 	"github.com/consensys/gnark-crypto/signature"
+	"github.com/consensys/gnark/backend"
 	"github.com/consensys/gnark/backend/groth16"
+	"github.com/consensys/gnark/backend/witness"
+	"github.com/consensys/gnark/constraint/solver"
 	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/std/accumulator/merkle"
 	"github.com/kysee/zkp/utils"
 	"github.com/kysee/zkp/zk-vote/vote"
-	"math/big"
+	"github.com/rs/zerolog"
 )
 
 type Citizen struct {
@@ -30,7 +35,7 @@ type Citizen struct {
 }
 
 func NewCitizen(name, sn string) *Citizen {
-	didPrvKey, _ := eddsa.GenerateKeyInterfaces(rand.Reader)
+	didPrvKey, _ := eddsa.GenerateKey(rand.Reader)
 
 	return &Citizen{
 		Name:      name,
@@ -42,7 +47,7 @@ func NewCitizen(name, sn string) *Citizen {
 
 func (c *Citizen) HashDIDPubKey() []byte {
 	var p twistededwards.PointAffine
-	p.SetBytes(c.DIDPubKey.Bytes())
+	_, _ = p.SetBytes(c.DIDPubKey.Bytes())
 	x := p.X.Bytes()
 	y := p.Y.Bytes()
 
@@ -63,7 +68,7 @@ func (c *Citizen) GetPrvScalar() ([]byte, []byte) {
 }
 
 func (c *Citizen) MakeVotePaperID() {
-	tmpPrvKey, _ := eddsa.GenerateKeyInterfaces(rand.Reader)
+	tmpPrvKey, _ := eddsa.GenerateKey(rand.Reader)
 	c.TmpVotePrvKey = tmpPrvKey
 	c.TmpVotePubKey = tmpPrvKey.Public()
 
@@ -74,63 +79,79 @@ func (c *Citizen) MakeVotePaperID() {
 	c.VotePaperID = utils.ComputeHash(s1[:], s2[:], x[:], y[:])
 }
 
-func (c *Citizen) VoteProof(choice []byte, force ...bool) (groth16.Proof, error) {
+var gnarkLogger = zerolog.New(os.Stdout).Level(zerolog.DebugLevel).With().Timestamp().Logger()
+
+func (c *Citizen) VoteProof(choice []byte) (groth16.Proof, witness.Witness, error) {
 	if c.VotePaperID == nil {
-		return nil, errors.New("not found VotePaperID")
+		return nil, nil, errors.New("VotePaperID should not be nil")
 	}
 
 	cidx := c.GetIndex()
 	if cidx < 0 {
-		return nil, errors.New("not found index in merkle")
+		return nil, nil, errors.New("not found index in merkle")
 	}
 	citizenIdx := uint64(cidx)
 
-	rootHash, proofSet, numLeaves, err := merkletree.BuildReaderProof(
+	rootHash, proofPath, numLeaves, err := merkletree.BuildReaderProof(
 		bytes.NewBuffer(MerkleCitizensBytes),
-		utils.HASHER, utils.HASHER.Size(), citizenIdx)
+		utils.DefaultHasher(),
+		utils.DefaultHasher().Size(),
+		citizenIdx,
+	)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	helperSet := merkle.GenerateProofHelper(proofSet, citizenIdx, numLeaves)
-
-	var wtn vote.VoteCircuit
-	wtn.CitizensRootHash.Assign(rootHash)
-	wtn.Path = make([]frontend.Variable, len(proofSet))
-	for i := 0; i < len(proofSet); i++ {
-		wtn.Path[i].Assign(proofSet[i])
+	// verify the proof in plain go
+	verified := merkletree.VerifyProof(utils.DefaultHasher(), rootHash, proofPath, citizenIdx, numLeaves)
+	if !verified {
+		return nil, nil, errors.New("the merkle proof in plain go should pass")
 	}
-	wtn.Helper = make([]frontend.Variable, len(helperSet))
-	for i := 0; i < len(helperSet); i++ {
-		wtn.Helper[i].Assign(helperSet[i])
+
+	var assignment vote.VoteCircuit
+	assignment.SetCurveId(utils.CURVEID)
+	assignment.LeafIdx = citizenIdx
+	assignment.M.RootHash = rootHash
+	assignment.M.Path = make([]frontend.Variable, len(proofPath))
+	for i := 0; i < len(proofPath); i++ {
+		assignment.M.Path[i] = proofPath[i]
 	}
 
 	// private scalar & vote paper id
-	e128 := new(big.Int).Exp(big.NewInt(2), big.NewInt(128), nil)
-	wtn.E128.Assign(e128.Bytes())
-	s1, s2 := c.GetPrvScalar()
-	wtn.PrvKeyS1.Assign(s1[:])
-	wtn.PrvKeyS2.Assign(s2[:])
-	wtn.AssignPubKey(c.DIDPubKey)
-	wtn.VotePaperID.Assign(c.VotePaperID)
-	wtn.Choice.Assign(choice)
+	s0, s1 := c.GetPrvScalar()
+	assignment.S0, assignment.S1 = s0, s1
+	assignment.AssignPubKey(c.DIDPubKey)
+	assignment.VotePaperID = c.VotePaperID
+	assignment.Choice = choice
 
-	sig, err := c.DIDPrvKey.Sign(choice, utils.HASHER)
+	sig, err := c.DIDPrvKey.Sign(choice, utils.DefaultHasher())
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	wtn.AssignSig(sig)
+	assignment.AssignSig(sig)
 
-	_force := false
-	if len(force) > 0 {
-		_force = force[0]
-	}
-
-	proof, err := groth16.Prove(vote.R1CS, vote.ProvingKey, &wtn, _force)
+	wtn, err := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return proof, nil
+
+	proof, err := groth16.Prove(
+		vote.R1CS,
+		vote.ProvingKey,
+		wtn,
+		backend.WithSolverOptions(
+			solver.WithLogger(gnarkLogger),
+		),
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	pubW, err := wtn.Public()
+	if err != nil {
+		return nil, nil, err
+	}
+	return proof, pubW, nil
 }
 
 //func (c *Citizen) ProofVoting(selection string) (groth16.Proof, error) {

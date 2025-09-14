@@ -2,7 +2,7 @@ package gov
 
 import (
 	"github.com/consensys/gnark-crypto/accumulator/merkletree"
-	"github.com/consensys/gnark-crypto/hash"
+	"github.com/kysee/zkp/utils"
 )
 
 var (
@@ -18,7 +18,7 @@ func RegisterCitizen(c *Citizen) int {
 	d := c.HashDIDPubKey()
 
 	if merkleCitizens == nil {
-		merkleCitizens = merkletree.New(hash.MIMC_BN254.New("seed"))
+		merkleCitizens = merkletree.New(utils.DefaultHasher())
 	}
 	merkleCitizens.Push(d)
 	MerkleCitizensBytes = append(MerkleCitizensBytes, d...)

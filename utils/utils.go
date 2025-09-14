@@ -1,31 +1,39 @@
 package utils
 
 import (
+	"hash"
+
 	bn254mimc "github.com/consensys/gnark-crypto/ecc/bn254/fr/mimc"
-	"github.com/consensys/gnark-crypto/hash"
+	"github.com/consensys/gnark-crypto/ecc/twistededwards"
+	gnark_hash "github.com/consensys/gnark-crypto/hash"
 )
 
 var (
-	HASHER = hash.MIMC_BN254.New("seed")
+	CURVEID = twistededwards.BN254
 )
 
+func DefaultHasher() hash.Hash {
+	return gnark_hash.MIMC_BN254.New()
+}
+
 func ComputeHash(ins ...[]byte) []byte {
-	HASHER.Reset()
+	hasher := DefaultHasher()
+	hasher.Reset()
 	for _, in := range ins {
 		if len(in) > bn254mimc.BlockSize {
-			HASHER.Write(in)
+			hasher.Write(in)
 			zeroCnt := len(in) % bn254mimc.BlockSize
 			if zeroCnt > 0 {
 				zeroCnt = bn254mimc.BlockSize - zeroCnt
 				zeroBz := make([]byte, zeroCnt)
-				HASHER.Write(zeroBz)
+				hasher.Write(zeroBz)
 			}
 		} else {
 			inblock := make([]byte, bn254mimc.BlockSize)
 			copy(inblock[bn254mimc.BlockSize-len(in):], in)
-			HASHER.Write(inblock)
+			hasher.Write(inblock)
 		}
 
 	}
-	return HASHER.Sum(nil)
+	return hasher.Sum(nil)
 }

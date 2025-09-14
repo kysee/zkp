@@ -2,10 +2,11 @@ package vote
 
 import (
 	"bytes"
+
 	"github.com/consensys/gnark-crypto/accumulator/merkletree"
-	"github.com/consensys/gnark-crypto/hash"
 	"github.com/consensys/gnark/backend/groth16"
-	"github.com/consensys/gnark/frontend"
+	"github.com/consensys/gnark/backend/witness"
+	"github.com/kysee/zkp/utils"
 )
 
 var (
@@ -40,22 +41,14 @@ func FindVotePaper(id []byte) *VotePaper {
 
 func InitializeVotePapers(n int) {
 	votePapers = make(map[[32]byte]*VotePaper)
-	merkleVotePapers = merkletree.New(hash.MIMC_BN254.New("seed"))
+	merkleVotePapers = merkletree.New(utils.DefaultHasher())
 }
 
-func DoVote(proof groth16.Proof, depth int, rootHash, votePaperID, choice []byte) error {
-	var pubWtn VoteCircuit
-	pubWtn.Path = make([]frontend.Variable, depth)
-	pubWtn.Helper = make([]frontend.Variable, depth-1)
-	pubWtn.CitizensRootHash.Assign(rootHash)
-	pubWtn.VotePaperID.Assign(votePaperID)
-	pubWtn.Choice.Assign(choice)
-
-	if err := groth16.Verify(proof, VerifyingKey, &pubWtn); err != nil {
+func DoVote(proof groth16.Proof, pubWtn witness.Witness, votePaperId, choice []byte) error {
+	if err := groth16.Verify(proof, VerifyingKey, pubWtn); err != nil {
 		return err
 	}
-
-	addVotePaper(votePaperID, choice)
+	addVotePaper(votePaperId, choice)
 	return nil
 }
 
