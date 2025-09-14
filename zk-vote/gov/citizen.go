@@ -14,7 +14,6 @@ import (
 	"github.com/consensys/gnark-crypto/signature"
 	"github.com/consensys/gnark/backend"
 	"github.com/consensys/gnark/backend/groth16"
-	"github.com/consensys/gnark/backend/witness"
 	"github.com/consensys/gnark/constraint/solver"
 	"github.com/consensys/gnark/frontend"
 	"github.com/kysee/zkp/utils"
@@ -81,14 +80,14 @@ func (c *Citizen) MakeVotePaperID() {
 
 var gnarkLogger = zerolog.New(os.Stdout).Level(zerolog.DebugLevel).With().Timestamp().Logger()
 
-func (c *Citizen) VoteProof(choice []byte) (groth16.Proof, witness.Witness, error) {
+func (c *Citizen) VoteProof(choice []byte) (groth16.Proof, error) {
 	if c.VotePaperID == nil {
-		return nil, nil, errors.New("VotePaperID should not be nil")
+		return nil, errors.New("VotePaperID should not be nil")
 	}
 
 	cidx := c.GetIndex()
 	if cidx < 0 {
-		return nil, nil, errors.New("not found index in merkle")
+		return nil, errors.New("not found index in merkle")
 	}
 	citizenIdx := uint64(cidx)
 
@@ -99,13 +98,13 @@ func (c *Citizen) VoteProof(choice []byte) (groth16.Proof, witness.Witness, erro
 		citizenIdx,
 	)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	// verify the proof in plain go
 	verified := merkletree.VerifyProof(utils.DefaultHasher(), rootHash, proofPath, citizenIdx, numLeaves)
 	if !verified {
-		return nil, nil, errors.New("the merkle proof in plain go should pass")
+		return nil, errors.New("the merkle proof in plain go should pass")
 	}
 
 	var assignment vote.VoteCircuit
@@ -126,13 +125,13 @@ func (c *Citizen) VoteProof(choice []byte) (groth16.Proof, witness.Witness, erro
 
 	sig, err := c.DIDPrvKey.Sign(choice, utils.DefaultHasher())
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	assignment.AssignSig(sig)
 
 	wtn, err := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	proof, err := groth16.Prove(
@@ -144,14 +143,9 @@ func (c *Citizen) VoteProof(choice []byte) (groth16.Proof, witness.Witness, erro
 		),
 	)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-
-	pubW, err := wtn.Public()
-	if err != nil {
-		return nil, nil, err
-	}
-	return proof, pubW, nil
+	return proof, nil
 }
 
 //func (c *Citizen) ProofVoting(selection string) (groth16.Proof, error) {

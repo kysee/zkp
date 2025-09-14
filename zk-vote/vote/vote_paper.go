@@ -4,8 +4,9 @@ import (
 	"bytes"
 
 	"github.com/consensys/gnark-crypto/accumulator/merkletree"
+	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend/groth16"
-	"github.com/consensys/gnark/backend/witness"
+	"github.com/consensys/gnark/frontend"
 	"github.com/kysee/zkp/utils"
 )
 
@@ -44,8 +45,17 @@ func InitializeVotePapers(n int) {
 	merkleVotePapers = merkletree.New(utils.DefaultHasher())
 }
 
-func DoVote(proof groth16.Proof, pubWtn witness.Witness, votePaperId, choice []byte) error {
-	if err := groth16.Verify(proof, VerifyingKey, pubWtn); err != nil {
+func DoVote(proof groth16.Proof, votePaperId, choice []byte) error {
+	tmpAssignment := VoteCircuit{
+		VotePaperID: votePaperId,
+		Choice:      choice,
+	}
+	pubWtn, err := frontend.NewWitness(&tmpAssignment, ecc.BN254.ScalarField(), frontend.PublicOnly())
+	if err != nil {
+		return err
+	}
+	err = groth16.Verify(proof, VerifyingKey, pubWtn)
+	if err != nil {
 		return err
 	}
 	addVotePaper(votePaperId, choice)

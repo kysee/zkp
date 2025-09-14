@@ -3,7 +3,6 @@ package vote_test
 import (
 	"bytes"
 	"fmt"
-	"log"
 	"math/rand"
 	"testing"
 	"time"
@@ -59,10 +58,10 @@ func TestVote(t *testing.T) {
 		r := rand.Intn(len(choices))
 		choice := choices[r]
 
-		proof, pubWtn, err := c.VoteProof(choice)
+		proof, err := c.VoteProof(choice)
 		require.NoError(t, err)
 
-		err = vote.DoVote(proof, pubWtn, c.VotePaperID, choice)
+		err = vote.DoVote(proof, c.VotePaperID, choice)
 		require.NoError(t, err)
 		require.Equal(t, i+1, vote.GetVotePaperCnt())
 
@@ -72,38 +71,35 @@ func TestVote(t *testing.T) {
 	for i, cho := range choices {
 		require.Equal(t, choiceResults[i], vote.GetChoiceCnt(cho))
 		totalChoiceCnt += choiceResults[i]
-		log.Printf("choice=%x, score=%d\n", cho, choiceResults[i])
+		//log.Printf("choice=%x, score=%d\n", cho, choiceResults[i])
 	}
 
 	vpcnt := vote.GetVotePaperCnt()
 	require.Equal(t, totalChoiceCnt, vpcnt)
 
-	fchoice := []byte{0x0f}
+	fchoice := []byte{0xff}
 	fcnt := 0
 	for _, c := range citizens {
 		r := rand.Intn(len(choices))
 		choice := choices[r]
 
-		proof, pubWtn, err := c.VoteProof(choice)
+		proof, err := c.VoteProof(choice)
 		require.NoError(t, err)
 
 		r = rand.Intn(3)
 		if r == 0 {
+			// Revoting should be allowed.
 			vpaper := vote.FindVotePaper(c.VotePaperID)
 			require.NotNil(t, vpaper)
 			oriChoice := vpaper.GetChoice()
 			choiceResults[int(oriChoice[0])-1] -= 1
 
-			err = vote.DoVote(proof, pubWtn, c.VotePaperID, choice)
+			err = vote.DoVote(proof, c.VotePaperID, choice)
 			require.NoError(t, err)
 			choiceResults[int(choice[0])-1] += 1
 		} else {
-			_, fWtn, err := c.VoteProof(fchoice)
-			require.NoError(t, err)
-			_pubFWtn, err := fWtn.Public()
-			require.NoError(t, err)
-
-			err = vote.DoVote(proof, _pubFWtn, c.VotePaperID, fchoice)
+			// Try with an `fchoice` not used in the proof generation; expected to fail.
+			err = vote.DoVote(proof, c.VotePaperID, fchoice)
 			require.Error(t, err)
 			fcnt++
 		}
@@ -115,7 +111,7 @@ func TestVote(t *testing.T) {
 	for i, cho := range choices {
 		require.Equal(t, choiceResults[i], vote.GetChoiceCnt(cho))
 		totalChoiceCnt += choiceResults[i]
-		log.Printf("choice=%x, score=%d\n", cho, choiceResults[i])
+		//log.Printf("choice=%x, score=%d\n", cho, choiceResults[i])
 	}
 
 	vpcnt = vote.GetVotePaperCnt()
@@ -123,34 +119,51 @@ func TestVote(t *testing.T) {
 }
 
 func TestDupVote(t *testing.T) {
-	dupChoice := []byte{0xd}
 	backupVotePaperCnt := vote.GetVotePaperCnt()
 
 	rand.Seed(time.Now().UnixNano())
 	for i := 0; i < 100; i++ {
-		r := rand.Intn(len(citizens))
-		c := citizens[r]
+		c := citizens[rand.Intn(len(citizens))]
+		choice := choices[rand.Intn(len(choices))]
 
 		backupVotePaperID := make([]byte, len(c.VotePaperID))
 		copy(backupVotePaperID, c.VotePaperID)
 
-		n, err := rand.Read(c.VotePaperID[:32]) // use random VotePaperID
+		// replace c.VotePaperId with random values
+		n, err := rand.Read(c.VotePaperID[:32])
 		require.NoError(t, err)
 		require.Equal(t, 32, n)
 		require.NotEqual(t, backupVotePaperID, c.VotePaperID)
 
-		proof, pubWtn, err := c.VoteProof(dupChoice)
+		// `c.VotePaperID` is changed.
+		// This is an attempt to cast extra ballots by fabricating them,
+		// i.e., an attempt at one person voting multiple times.
+		// This means duplicate voting, which must not be allowed.
+		proof, err := c.VoteProof(choice)
 		require.Error(t, err)
-
-		// force flag is disappear
-		//proof, err = c.VoteProof(dupChoice)
-		//require.NoError(t, err)
-
-		//err = vote.DoVote(proof, c.VotePaperID, dupChoice)
-		//require.Error(t, err)
-
 		require.Nil(t, proof)
-		require.Nil(t, pubWtn)
+
+		// restore c.VotePaperID
+		copy(c.VotePaperID, backupVotePaperID)
+	}
+
+	for i := 0; i < 100; i++ {
+		c := citizens[rand.Intn(len(citizens))]
+		choice := choices[rand.Intn(len(choices))]
+
+		proof, err := c.VoteProof(choice)
+		require.NoError(t, err)
+
+		otherVotingPaperID := make([]byte, len(c.VotePaperID))
+		n, err := rand.Read(otherVotingPaperID)
+		require.NoError(t, err)
+		require.Equal(t, 32, n)
+		require.NotEqual(t, c.VotePaperID, otherVotingPaperID)
+
+		// `otherVotingPaperID` is not used in the proof generation.
+		// This means duplicate voting, which must not be allowed.
+		err = vote.DoVote(proof, otherVotingPaperID, choice)
+		require.Error(t, err)
 	}
 
 	require.Equal(t, backupVotePaperCnt, vote.GetVotePaperCnt())
@@ -176,6 +189,7 @@ func TestFakeVote(t *testing.T) {
 
 		var assignment vote.VoteCircuit
 		assignment.SetCurveId(utils.CURVEID)
+		assignment.LeafIdx = victimIdx
 		assignment.M.RootHash = rootHash
 		assignment.M.Path = make([]frontend.Variable, len(proofPath))
 		for i := 0; i < len(proofPath); i++ {
@@ -205,13 +219,6 @@ func TestFakeVote(t *testing.T) {
 		proof, err := groth16.Prove(vote.R1CS, vote.ProvingKey, wtn)
 		require.Error(t, err)
 		require.Nil(t, proof)
-
-		// force flag is disappear
-		//proof, err = groth16.Prove(vote.R1CS, vote.ProvingKey, wtn, true)
-		//require.NoError(t, err)
-		//pubWtn, _ := wtn.Public()
-		//err = vote.DoVote(proof, pubWtn, victim.VotePaperID, hackerChoice)
-		//require.Error(t, err)
 	}
 
 	totalChoiceCnt := 0
@@ -219,13 +226,9 @@ func TestFakeVote(t *testing.T) {
 		require.Equal(t, backupChoiceResults[cho[0]-1], choiceResults[cho[0]-1])
 		require.Equal(t, choiceResults[cho[0]-1], vote.GetChoiceCnt(cho))
 		totalChoiceCnt += choiceResults[cho[0]-1]
-		log.Printf("choice=%x, score=%d\n", cho, choiceResults[cho[0]-1])
+		//log.Printf("choice=%x, score=%d\n", cho, choiceResults[cho[0]-1])
 	}
 
 	require.Equal(t, totalChoiceCnt, backupVotePaperCnt)
 	require.Equal(t, backupVotePaperCnt, vote.GetVotePaperCnt())
 }
-
-// add s0, s1 is over 128 bits
-
-//
