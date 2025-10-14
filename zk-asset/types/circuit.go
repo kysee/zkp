@@ -21,55 +21,52 @@ type ZKCircuit struct {
 	ToPub  eddsa.PublicKey
 	Salt1  frontend.Variable
 
-	Nullifiers   frontend.Variable `gnark:",public"`
-	noteCommit00 frontend.Variable `gnark:",public"`
-	noteCommit01 frontend.Variable `gnark:",public"`
-	noteCommit10 frontend.Variable `gnark:",public"`
+	noteSpent   frontend.Variable
+	noteReceipt frontend.Variable `gnark:",public"`
+	noteChanges frontend.Variable `gnark:",public"`
+	Nullifiers  frontend.Variable `gnark:",public"`
 }
 
 func (cc *ZKCircuit) Define(api frontend.API) error {
-	need := api.Add(cc.Amount, cc.Fee)
-	api.AssertIsLessOrEqual(need, cc.Balance)
-
+	curve, err := twistededwards.NewEdCurve(api, cc.curveID)
+	if err != nil {
+		return err
+	}
 	hasher, err := poseidon2.NewMerkleDamgardHasher(api)
 	if err != nil {
 		return err
 	}
 
-	// verify old balance
-	hasher.Write(cc.FromPub, cc.Balance, cc.Salt0)
-	api.AssertIsEqual(cc.noteCommit00, hasher.Sum())
+	// ToPub 이 유효한 점인지 확인
+	curve.AssertIsOnCurve(cc.ToPub.A)
 
+	needAmt := api.Add(cc.Amount, cc.Fee)
+	api.AssertIsLessOrEqual(needAmt, cc.Balance)
+
+	// verify spent note
+	hasher.Write(cc.FromPub.A.X, cc.FromPub.A.Y, cc.Balance, cc.Salt0)
+	api.AssertIsEqual(cc.noteSpent, hasher.Sum())
+
+	// verify new note
 	hasher.Reset()
+	hasher.Write(cc.ToPub.A.X, cc.ToPub.A.Y, cc.Amount, cc.Salt1)
+	api.AssertIsEqual(cc.noteReceipt, hasher.Sum())
 
-	// verify other's balance
-	hasher.Write(cc.ToPub, cc.Amount, cc.Salt1)
-	api.AssertIsEqual(cc.noteCommit10, hasher.Sum())
+	// verify changes note
+	changes := api.Sub(cc.Balance, needAmt)
 
-	curve, err := twistededwards.NewEdCurve(api, cc.curveID)
-	if err != nil {
-		return err
-	}
+	// changes가 0인지 확인
+	isZero := api.IsZero(changes)
 
-	toPubPt := cc.ToPub.A
-	// toPubPt가 유효한 점인지 확인
-	curve.AssertIsOnCurve(toPubPt)
-
-	// ECDH: shared_secret = my_private_scalar * their_public_key
-	sharedSecret := curve.ScalarMul(toPubPt, cc.FromPrvScalar)
-
-	// 공유키를 해시하여 암호화 키 생성
+	// changes > 0인 경우 거스름돈 노트 해시 계산
 	hasher.Reset()
-	hasher.Write(sharedSecret)
-	encKey := hasher.Sum()
+	hasher.Write(cc.FromPub.A.X, cc.FromPub.A.Y, changes, cc.Salt0)
+	changesNote := hasher.Sum()
+
+	// changes가 0이면 noteChanges는 0이어야 하고,
+	// changes가 0이 아니면 noteChanges는 changesNote와 같아야 함
+	expectedChanges := api.Select(isZero, 0, changesNote)
+	api.AssertIsEqual(cc.noteChanges, expectedChanges)
 
 	return nil
-}
-
-func GenerateSharedSecret(myPrivateKey *tedwards.PrivateKey, theirPublicKey *tedwards.PublicKey) tedwards.Point {
-	// 공유키 = 나의 private key scalar * 상대방의 public key point
-	var sharedSecret tedwards.Point
-	sharedSecret.ScalarMultiplication(&theirPublicKey.A, myPrivateKey.Scalar)
-
-	return sharedSecret
 }
