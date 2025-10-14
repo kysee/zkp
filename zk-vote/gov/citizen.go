@@ -17,6 +17,7 @@ import (
 	"github.com/consensys/gnark/constraint/solver"
 	"github.com/consensys/gnark/frontend"
 	"github.com/kysee/zkp/utils"
+	"github.com/kysee/zkp/zk-vote/common"
 	"github.com/kysee/zkp/zk-vote/vote"
 	"github.com/rs/zerolog"
 )
@@ -110,6 +111,7 @@ func (c *Citizen) VoteProof(choice []byte) (groth16.Proof, error) {
 	var assignment vote.VoteCircuit
 	assignment.SetCurveId(utils.CURVEID)
 	assignment.LeafIdx = citizenIdx
+	assignment.CitizenMerkleRoot = common.MerkleCitizensRootHash
 	assignment.M.RootHash = rootHash
 	assignment.M.Path = make([]frontend.Variable, len(proofPath))
 	for i := 0; i < len(proofPath); i++ {

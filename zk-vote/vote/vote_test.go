@@ -12,6 +12,7 @@ import (
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/frontend"
 	"github.com/kysee/zkp/utils"
+	"github.com/kysee/zkp/zk-vote/common"
 	"github.com/kysee/zkp/zk-vote/gov"
 	"github.com/kysee/zkp/zk-vote/vote"
 	"github.com/stretchr/testify/require"
@@ -190,6 +191,7 @@ func TestFakeVote(t *testing.T) {
 		var assignment vote.VoteCircuit
 		assignment.SetCurveId(utils.CURVEID)
 		assignment.LeafIdx = victimIdx
+		assignment.CitizenMerkleRoot = common.MerkleCitizensRootHash
 		assignment.M.RootHash = rootHash
 		assignment.M.Path = make([]frontend.Variable, len(proofPath))
 		for i := 0; i < len(proofPath); i++ {

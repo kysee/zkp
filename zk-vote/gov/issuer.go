@@ -3,13 +3,13 @@ package gov
 import (
 	"github.com/consensys/gnark-crypto/accumulator/merkletree"
 	"github.com/kysee/zkp/utils"
+	"github.com/kysee/zkp/zk-vote/common"
 )
 
 var (
-	totalCitizens          []*Citizen
-	merkleCitizens         *merkletree.Tree
-	MerkleCitizensBytes    []byte
-	MerkleCitizensRootHash []byte
+	totalCitizens       []*Citizen
+	merkleCitizens      *merkletree.Tree
+	MerkleCitizensBytes []byte
 )
 
 func RegisterCitizen(c *Citizen) int {
@@ -22,7 +22,7 @@ func RegisterCitizen(c *Citizen) int {
 	}
 	merkleCitizens.Push(d)
 	MerkleCitizensBytes = append(MerkleCitizensBytes, d...)
-	MerkleCitizensRootHash = merkleCitizens.Root()
+	common.MerkleCitizensRootHash = merkleCitizens.Root()
 
 	return len(totalCitizens)
 }

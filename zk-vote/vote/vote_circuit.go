@@ -25,15 +25,16 @@ var (
 )
 
 type VoteCircuit struct {
-	curveID     ecc_tedwards.ID
-	M           merkle.MerkleProof
-	LeafIdx     frontend.Variable
-	S0          frontend.Variable
-	S1          frontend.Variable
-	DIDPubKey   eddsa.PublicKey
-	VotePaperID frontend.Variable `gnark:",public"`
-	Choice      frontend.Variable `gnark:",public"`
-	ChoiceSig   eddsa.Signature
+	curveID           ecc_tedwards.ID
+	M                 merkle.MerkleProof
+	CitizenMerkleRoot frontend.Variable `gnark:",public"`
+	LeafIdx           frontend.Variable
+	S0                frontend.Variable
+	S1                frontend.Variable
+	DIDPubKey         eddsa.PublicKey
+	VotePaperID       frontend.Variable `gnark:",public"`
+	Choice            frontend.Variable `gnark:",public"`
+	ChoiceSig         eddsa.Signature
 }
 
 func (cc *VoteCircuit) Define(api frontend.API) error {
@@ -53,6 +54,9 @@ func (cc *VoteCircuit) Define(api frontend.API) error {
 
 	hFunc.Reset()
 	cc.M.VerifyProof(api, &hFunc, cc.LeafIdx)
+
+	// Verify that the computed Merkle root matches the public Merkle root
+	api.AssertIsEqual(cc.M.RootHash, cc.CitizenMerkleRoot)
 
 	//
 	// 1. DIDPubKey should be driven from PrvKeyScalar : check that a prover owns a private key of a DIDPubKey

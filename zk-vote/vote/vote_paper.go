@@ -8,6 +8,7 @@ import (
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/frontend"
 	"github.com/kysee/zkp/utils"
+	"github.com/kysee/zkp/zk-vote/common"
 )
 
 var (
@@ -47,8 +48,9 @@ func InitializeVotePapers(n int) {
 
 func DoVote(proof groth16.Proof, votePaperId, choice []byte) error {
 	tmpAssignment := VoteCircuit{
-		VotePaperID: votePaperId,
-		Choice:      choice,
+		CitizenMerkleRoot: common.MerkleCitizensRootHash,
+		VotePaperID:       votePaperId,
+		Choice:            choice,
 	}
 	pubWtn, err := frontend.NewWitness(&tmpAssignment, ecc.BN254.ScalarField(), frontend.PublicOnly())
 	if err != nil {
