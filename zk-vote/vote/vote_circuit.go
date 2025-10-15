@@ -26,8 +26,8 @@ var (
 
 type VoteCircuit struct {
 	curveID           ecc_tedwards.ID
-	M                 merkle.MerkleProof
 	CitizenMerkleRoot frontend.Variable `gnark:",public"`
+	CitizenMerklePath []frontend.Variable
 	LeafIdx           frontend.Variable
 	S0                frontend.Variable
 	S1                frontend.Variable
@@ -38,14 +38,22 @@ type VoteCircuit struct {
 }
 
 func (cc *VoteCircuit) Define(api frontend.API) error {
-	hFunc, _ := mimc.NewMiMC(api)
+	hFunc, err := mimc.NewMiMC(api)
+	if err != nil {
+		return err
+	}
+
+	merkleProof := merkle.MerkleProof{
+		RootHash: cc.CitizenMerkleRoot,
+		Path:     cc.CitizenMerklePath,
+	}
 
 	//
 	// 0. a prover should be a citizen
 	hFunc.Write(cc.DIDPubKey.A.X, cc.DIDPubKey.A.Y)
 	h0 := hFunc.Sum()
 
-	api.AssertIsEqual(h0, cc.M.Path[0])
+	api.AssertIsEqual(h0, merkleProof.Path[0])
 
 	//api.Println("h0        ", h0)
 	//api.Println("M.Path[0] ", cc.M.Path[0])
@@ -53,10 +61,10 @@ func (cc *VoteCircuit) Define(api frontend.API) error {
 	//api.Println("LeafIdx", cc.LeafIdx)
 
 	hFunc.Reset()
-	cc.M.VerifyProof(api, &hFunc, cc.LeafIdx)
+	merkleProof.VerifyProof(api, &hFunc, cc.LeafIdx)
 
-	// Verify that the computed Merkle root matches the public Merkle root
-	api.AssertIsEqual(cc.M.RootHash, cc.CitizenMerkleRoot)
+	//// Verify that the computed Merkle root matches the public Merkle root
+	//api.AssertIsEqual(merkleProof.RootHash, cc.CitizenMerkleRoot)
 
 	//
 	// 1. DIDPubKey should be driven from PrvKeyScalar : check that a prover owns a private key of a DIDPubKey
@@ -140,7 +148,7 @@ func CompileCircuit(depth int) error {
 	var cc VoteCircuit
 
 	cc.curveID = utils.CURVEID
-	cc.M.Path = make([]frontend.Variable, depth+1)
+	cc.CitizenMerklePath = make([]frontend.Variable, depth+1)
 	if R1CS, err = frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &cc); err != nil {
 		return err
 	}

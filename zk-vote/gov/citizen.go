@@ -112,10 +112,9 @@ func (c *Citizen) VoteProof(choice []byte) (groth16.Proof, error) {
 	assignment.SetCurveId(utils.CURVEID)
 	assignment.LeafIdx = citizenIdx
 	assignment.CitizenMerkleRoot = common.MerkleCitizensRootHash
-	assignment.M.RootHash = rootHash
-	assignment.M.Path = make([]frontend.Variable, len(proofPath))
+	assignment.CitizenMerklePath = make([]frontend.Variable, len(proofPath))
 	for i := 0; i < len(proofPath); i++ {
-		assignment.M.Path[i] = proofPath[i]
+		assignment.CitizenMerklePath[i] = proofPath[i]
 	}
 
 	// private scalar & vote paper id

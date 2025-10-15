@@ -183,7 +183,7 @@ func TestFakeVote(t *testing.T) {
 		victim := citizens[(r+1)%len(citizens)]
 		victimIdx := uint64(victim.GetIndex())
 
-		rootHash, proofPath, _, err := merkletree.BuildReaderProof(
+		_, proofPath, _, err := merkletree.BuildReaderProof(
 			bytes.NewBuffer(gov.MerkleCitizensBytes),
 			utils.DefaultHasher(), utils.DefaultHasher().Size(), victimIdx)
 		require.NoError(t, err)
@@ -192,10 +192,9 @@ func TestFakeVote(t *testing.T) {
 		assignment.SetCurveId(utils.CURVEID)
 		assignment.LeafIdx = victimIdx
 		assignment.CitizenMerkleRoot = common.MerkleCitizensRootHash
-		assignment.M.RootHash = rootHash
-		assignment.M.Path = make([]frontend.Variable, len(proofPath))
+		assignment.CitizenMerklePath = make([]frontend.Variable, len(proofPath))
 		for i := 0; i < len(proofPath); i++ {
-			assignment.M.Path[i] = proofPath[i]
+			assignment.CitizenMerklePath[i] = proofPath[i]
 		}
 
 		// private scalar & vote paper id
