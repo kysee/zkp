@@ -4,12 +4,13 @@ import (
 	"bytes"
 	crand "crypto/rand"
 	"fmt"
+	"math/big"
+
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/twistededwards/eddsa"
 	"github.com/consensys/gnark-crypto/signature"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/holiman/uint256"
 	"github.com/kysee/zkp/utils"
-	"math/big"
 )
 
 type Note struct {
