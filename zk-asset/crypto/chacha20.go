@@ -6,7 +6,7 @@ import (
 	"golang.org/x/crypto/chacha20poly1305"
 )
 
-// EncryptNote encrypts the note plaintext using the ChaCha20-Poly1305 AEAD (Authenticated
+// ChaCha20Poly1305_Encrypt encrypts the note plaintext using the ChaCha20-Poly1305 AEAD (Authenticated
 // Encryption with Associated Data) scheme.
 //
 // Parameters:
@@ -17,7 +17,7 @@ import (
 //     typically the ephemeral public key (epk).
 //
 // Returns the ciphertext, which includes the authentication tag.
-func EncryptNote(key, nonce, plaintext, additionalData []byte) ([]byte, error) {
+func ChaCha20Poly1305_Encrypt(key, nonce, plaintext, additionalData []byte) ([]byte, error) {
 	if len(key) != chacha20poly1305.KeySize {
 		return nil, fmt.Errorf("invalid key size: must be %d bytes", chacha20poly1305.KeySize)
 	}
@@ -34,7 +34,7 @@ func EncryptNote(key, nonce, plaintext, additionalData []byte) ([]byte, error) {
 	return ciphertext, nil
 }
 
-// DecryptNote decrypts the note ciphertext using ChaCha20-Poly1305.
+// ChaCha20Poly1305_Decrypt decrypts the note ciphertext using ChaCha20-Poly1305.
 //
 // Parameters:
 //   - key: The 32-byte symmetric encryption key used for encryption.
@@ -44,7 +44,7 @@ func EncryptNote(key, nonce, plaintext, additionalData []byte) ([]byte, error) {
 //     data used during encryption.
 //
 // Returns the original plaintext if decryption and authentication are successful.
-func DecryptNote(key, nonce, ciphertext, additionalData []byte) ([]byte, error) {
+func ChaCha20Poly1305_Decrypt(key, nonce, ciphertext, additionalData []byte) ([]byte, error) {
 	if len(key) != chacha20poly1305.KeySize {
 		return nil, fmt.Errorf("invalid key size: must be %d bytes", chacha20poly1305.KeySize)
 	}
