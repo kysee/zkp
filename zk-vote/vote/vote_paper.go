@@ -43,7 +43,7 @@ func FindVotePaper(id []byte) *VotePaper {
 
 func InitializeVotePapers(n int) {
 	votePapers = make(map[[32]byte]*VotePaper)
-	merkleVotePapers = merkletree.New(utils.DefaultHasher())
+	merkleVotePapers = merkletree.New(utils.MiMCHasher())
 }
 
 func DoVote(proof groth16.Proof, votePaperId, choice []byte) error {

@@ -51,7 +51,7 @@ func (c *Citizen) HashDIDPubKey() []byte {
 	x := p.X.Bytes()
 	y := p.Y.Bytes()
 
-	return utils.ComputeHash(x[:], y[:])
+	return utils.MiMCHash(x[:], y[:])
 }
 
 func (c *Citizen) GetIndex() int {
@@ -76,7 +76,7 @@ func (c *Citizen) MakeVotePaperID() {
 	x := c.DIDPubKey.(*eddsa.PublicKey).A.X.Bytes()
 	y := c.DIDPubKey.(*eddsa.PublicKey).A.Y.Bytes()
 
-	c.VotePaperID = utils.ComputeHash(s1[:], s2[:], x[:], y[:])
+	c.VotePaperID = utils.MiMCHash(s1[:], s2[:], x[:], y[:])
 }
 
 var gnarkLogger = zerolog.New(os.Stdout).Level(zerolog.DebugLevel).With().Timestamp().Logger()
@@ -94,8 +94,8 @@ func (c *Citizen) VoteProof(choice []byte) (groth16.Proof, error) {
 
 	rootHash, proofPath, numLeaves, err := merkletree.BuildReaderProof(
 		bytes.NewBuffer(MerkleCitizensBytes),
-		utils.DefaultHasher(),
-		utils.DefaultHasher().Size(),
+		utils.MiMCHasher(),
+		utils.MiMCHasher().Size(),
 		citizenIdx,
 	)
 	if err != nil {
@@ -103,7 +103,7 @@ func (c *Citizen) VoteProof(choice []byte) (groth16.Proof, error) {
 	}
 
 	// verify the proof in plain go
-	verified := merkletree.VerifyProof(utils.DefaultHasher(), rootHash, proofPath, citizenIdx, numLeaves)
+	verified := merkletree.VerifyProof(utils.MiMCHasher(), rootHash, proofPath, citizenIdx, numLeaves)
 	if !verified {
 		return nil, errors.New("the merkle proof in plain go should pass")
 	}
@@ -124,7 +124,7 @@ func (c *Citizen) VoteProof(choice []byte) (groth16.Proof, error) {
 	assignment.VotePaperID = c.VotePaperID
 	assignment.Choice = choice
 
-	sig, err := c.DIDPrvKey.Sign(choice, utils.DefaultHasher())
+	sig, err := c.DIDPrvKey.Sign(choice, utils.MiMCHasher())
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +155,7 @@ func (c *Citizen) VoteProof(choice []byte) (groth16.Proof, error) {
 //	wtn.H1.Assign(c.Hash1())
 //	wtn.VotePaperID.Assign( c.VotePaperID )
 //	wtn.Selection.Assign([]byte(selection))
-//	wtn.RetHash.Assign(utils.ComputeHash(c.VotePaperID, []byte(selection)))
+//	wtn.RetHash.Assign(utils.MiMCHash(c.VotePaperID, []byte(selection)))
 //
 //	return  groth16.Prove(voting.R1CS, voting.ProvingKey, &wtn)
 //}

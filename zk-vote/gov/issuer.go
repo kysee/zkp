@@ -18,7 +18,7 @@ func RegisterCitizen(c *Citizen) int {
 	d := c.HashDIDPubKey()
 
 	if merkleCitizens == nil {
-		merkleCitizens = merkletree.New(utils.DefaultHasher())
+		merkleCitizens = merkletree.New(utils.MiMCHasher())
 	}
 	merkleCitizens.Push(d)
 	MerkleCitizensBytes = append(MerkleCitizensBytes, d...)

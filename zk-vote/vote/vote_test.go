@@ -185,7 +185,7 @@ func TestFakeVote(t *testing.T) {
 
 		_, proofPath, _, err := merkletree.BuildReaderProof(
 			bytes.NewBuffer(gov.MerkleCitizensBytes),
-			utils.DefaultHasher(), utils.DefaultHasher().Size(), victimIdx)
+			utils.MiMCHasher(), utils.MiMCHasher().Size(), victimIdx)
 		require.NoError(t, err)
 
 		var assignment vote.VoteCircuit
@@ -210,7 +210,7 @@ func TestFakeVote(t *testing.T) {
 
 		// Hackers have no choice but sign by using their own DIDPrvKey
 		// because hackers CAN NOT know the victim's DIDPrvKey.
-		sig, err := hacker.DIDPrvKey.Sign(hackerChoice, utils.DefaultHasher())
+		sig, err := hacker.DIDPrvKey.Sign(hackerChoice, utils.MiMCHasher())
 		require.NoError(t, err)
 		assignment.AssignSig(sig)
 
