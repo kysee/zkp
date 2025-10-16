@@ -39,36 +39,38 @@ func ECDHEComputeSharedSecret(privateKey *jubjub.PrivateKey, otherPublicKey *jub
 	return hasher.Sum(nil), nil
 }
 
-// saplingKDF는 BLAKE2s를 사용하여 공유 비밀키로부터 키 스트림을 유도합니다.
-// PRF^expand 로직을 따릅니다.
+// SaplingKDF derives a key stream of a specified length from a shared secret using BLAKE2s.
+// This function follows the PRF^expand logic, similar to HKDF-Expand (RFC 5869),
+// as defined in the Zcash Sapling specification.
 func SaplingKDF(sharedSecret []byte, outputLen int) ([]byte, error) {
 	if len(sharedSecret) != 32 {
 		return nil, fmt.Errorf("sharedSecret must be 32 bytes")
 	}
 
-	// BLAKE2s 해셔를 KDF 목적으로 생성
-	h, err := blake2s.New256([]byte("beatoz_sapling_KDF"))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create blake2s hash: %w", err)
-	}
+	// Use the personalization string defined in the Zcash Sapling spec for PRF^expand.
+	personalization := []byte("Zcash_ExpandSeed")
 
-	h.Write(sharedSecret)
-
-	// 카운터를 1씩 증가시키며 필요한 길이의 출력을 생성
 	var keyStream []byte
-	var counter byte = 0
+	var counter byte = 1 // The counter must start at 1.
 	for len(keyStream) < outputLen {
-		// 현재 해시 상태를 복제하여 원본을 유지
-		hClone := h
+		// Create a new hash instance for each iteration to avoid state pollution.
+		h, err := blake2s.New256(personalization)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create blake2s hash: %w", err)
+		}
+		h.Write(sharedSecret)
+		h.Write([]byte{counter})
 
-		// 카운터 추가
-		hClone.Write([]byte{counter})
+		// Append the hash result to the key stream.
+		keyStream = append(keyStream, h.Sum(nil)...)
 
-		// 해시 결과 추가
-		keyStream = append(keyStream, hClone.Sum(nil)...)
 		counter++
+		// Check for counter overflow, which should not happen in practice for typical output lengths.
+		if counter == 0 {
+			return nil, errors.New("KDF counter overflow")
+		}
 	}
 
-	// 필요한 길이만큼 잘라서 반환
+	// Truncate the key stream to the desired length.
 	return keyStream[:outputLen], nil
 }
