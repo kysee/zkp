@@ -2,7 +2,6 @@ package types
 
 import (
 	"bytes"
-	crand "crypto/rand"
 	"fmt"
 	"math/big"
 
@@ -15,19 +14,10 @@ import (
 
 type Note struct {
 	Version byte
+	// todo: Apply diversifier of zcash
 	PubKey  signature.PublicKey
 	Balance *uint256.Int
 	Salt    []byte
-}
-
-func NewNote(balance *uint256.Int, salt []byte) *Note {
-	prvKey, _ := eddsa.GenerateKey(crand.Reader)
-	pubKey := prvKey.Public()
-	return &Note{
-		PubKey:  pubKey,
-		Balance: balance,
-		Salt:    salt,
-	}
 }
 
 func (n *Note) Bytes() []byte {
@@ -42,7 +32,38 @@ func (n *Note) Bytes() []byte {
 }
 
 func (n *Note) Commitment() []byte {
-	return utils.Poseidon2Hash(n.Bytes())
+	_pub := n.PubKey.(*eddsa.PublicKey)
+	ax := _pub.A.X.Bytes()
+	ay := _pub.A.Y.Bytes()
+
+	hasher := utils.DefaultHasher()
+	hasher.Reset()
+	hasher.Write([]byte{n.Version})
+	hasher.Write(ax[:])
+	hasher.Write(ay[:])
+	hasher.Write(n.Balance.Bytes())
+	hasher.Write(n.Salt)
+	return hasher.Sum(nil)
+}
+
+func (n *Note) Nullifier(sk0, sk1 []byte) []byte {
+	hasher := utils.DefaultHasher()
+	//
+	// verify Nullifier
+	// Step 1: Nullifier key 파생
+	// nk = Hash(private_key, "nullifier_key")
+	hasher.Reset()
+	hasher.Write(sk0)
+	hasher.Write(sk1)
+	// Domain separator (선택적으로 추가)
+	nk := hasher.Sum(nil)
+
+	// Step 2: Nullifier 계산
+	// nf = Hash(nk, note_commitment)
+	hasher.Reset()
+	hasher.Write(nk)
+	hasher.Write(n.Commitment()) // note commitment
+	return hasher.Sum(nil)
 }
 
 // SecretNote represents the plaintext data of a note that will be encrypted and sent to the recipient.

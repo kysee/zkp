@@ -12,12 +12,16 @@ var (
 	CURVEID = twistededwards.BN254
 )
 
+func DefaultHasher() hash.Hash {
+	return MiMCHasher()
+}
+
 func MiMCHasher() hash.Hash {
 	return gnark_hash.MIMC_BN254.New()
 }
 
 func Poseidon2Hasher() hash.Hash {
-	return gnark_hash.POSEIDON2_BLS12_381.New()
+	return gnark_hash.POSEIDON2_BN254.New()
 }
 
 func MiMCHash(ins ...[]byte) []byte {
@@ -37,8 +41,8 @@ func MiMCHash(ins ...[]byte) []byte {
 			copy(inblock[bn254mimc.BlockSize-len(in):], in)
 			hasher.Write(inblock)
 		}
-
 	}
+
 	return hasher.Sum(nil)
 }
 
