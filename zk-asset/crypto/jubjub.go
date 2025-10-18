@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"math/big"
 
-	tedwards "github.com/consensys/gnark-crypto/ecc/bls12-381/twistededwards"
-	jubjub "github.com/consensys/gnark-crypto/ecc/bls12-381/twistededwards/eddsa"
+	tedwards "github.com/consensys/gnark-crypto/ecc/bn254/twistededwards"
+	jubjub "github.com/consensys/gnark-crypto/ecc/bn254/twistededwards/eddsa"
 	"golang.org/x/crypto/blake2s"
 )
 

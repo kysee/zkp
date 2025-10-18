@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/btcsuite/btcutil/base58"
-	jubjub "github.com/consensys/gnark-crypto/ecc/bls12-381/twistededwards/eddsa"
+	jubjub "github.com/consensys/gnark-crypto/ecc/bn254/twistededwards/eddsa"
 )
 
 const ver = 0x01

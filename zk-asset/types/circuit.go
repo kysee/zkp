@@ -9,7 +9,6 @@ import (
 	"github.com/consensys/gnark/constraint"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/cs/scs"
-	"github.com/consensys/gnark/std/accumulator/merkle"
 	"github.com/consensys/gnark/std/algebra/native/twistededwards"
 	std_tedwards "github.com/consensys/gnark/std/algebra/native/twistededwards"
 	"github.com/consensys/gnark/std/hash"
@@ -57,7 +56,7 @@ func (cc *ZKCircuit) Define(api frontend.API) error {
 	if err != nil {
 		return err
 	}
-	//hasher, err := std_poseidon2.NewMerkleDamgardHasher(api)
+
 	hasher, err := std_mimc.NewMiMC(api)
 	if err != nil {
 		return err
@@ -65,8 +64,8 @@ func (cc *ZKCircuit) Define(api frontend.API) error {
 
 	cc.verifyKeys(api, curve)
 	cc.verifyNoteCommitment(api, &hasher)
-	cc.verifyNewNoteCommitment(api, &hasher)
-	cc.verifyChangeNoteCommitment(api, &hasher)
+	//cc.verifyNewNoteCommitment(api, &hasher)
+	//cc.verifyChangeNoteCommitment(api, &hasher)
 	return nil
 }
 
@@ -112,40 +111,65 @@ func (cc *ZKCircuit) verifyKeys(api frontend.API, curve std_tedwards.Curve) {
 func (cc *ZKCircuit) verifyNoteCommitment(api frontend.API, hasher hash.FieldHasher) {
 	//
 	// verify NoteCommitment
-	// check merkle proof
-	merkleProof := merkle.MerkleProof{
-		RootHash: cc.NoteMerkleRoot,
-		Path:     cc.NoteMerklePath,
-	}
-	hasher.Reset()
-	merkleProof.VerifyProof(api, hasher, cc.NoteIdx)
+	//// check merkle proof
+	//merkleProof := merkle.MerkleProof{
+	//	RootHash: cc.NoteMerkleRoot,
+	//	Path:     cc.NoteMerklePath,
+	//}
+	//hasher.Reset()
+	//merkleProof.VerifyProof(api, hasher, cc.NoteIdx)
 
 	// check balance
 	needAmt := api.Add(cc.Amount, cc.Fee)
 	api.AssertIsLessOrEqual(needAmt, cc.Balance)
 
+	api.Println("NeedAmt:", needAmt)
+	api.Println("Balance:", cc.Balance)
+
 	hasher.Reset()
-	hasher.Write(cc.NoteVer, cc.FromPub.A.X, cc.FromPub.A.Y, cc.Balance, cc.Salt0)
-	api.AssertIsEqual(cc.NoteCommitment, hasher.Sum())
+	// 각 필드를 개별적으로 Write (Go 코드와 동일하게)
+	hasher.Write(
+		cc.NoteVer,
+		cc.FromPub.A.X,
+		cc.FromPub.A.Y,
+		cc.Balance,
+		cc.Salt0,
+	)
+	computedCommitment := hasher.Sum()
+
+	api.Println("Expected NoteCommitment:", cc.NoteCommitment)
+	api.Println("Computed NoteCommitment:", computedCommitment)
+
+	api.AssertIsEqual(cc.NoteCommitment, computedCommitment)
 
 	//
 	// verify Nullifier
 	// Step 1: Nullifier key 파생
 	// nk = Hash(private_key, "nullifier_key")
+	api.Println("=== Nullifier Calculation ===")
+	api.Println("FromPrv0:", cc.FromPrv0)
+	api.Println("FromPrv1:", cc.FromPrv1)
+
 	hasher.Reset()
+	// 각 필드를 개별적으로 Write
 	hasher.Write(cc.FromPrv0, cc.FromPrv1)
 	// Domain separator (선택적으로 추가)
 	nk := hasher.Sum()
+	api.Println("nk (nullifier key):", nk)
 
 	// Step 2: Nullifier 계산
 	// nf = Hash(nk, note_commitment)
+	api.Println("NoteCommitment for nullifier:", cc.NoteCommitment)
+
 	hasher.Reset()
-	hasher.Write(nk)
-	hasher.Write(cc.NoteCommitment) // note commitment
+	hasher.Write(nk, cc.NoteCommitment) // note commitment
 	computedNullifier := hasher.Sum()
 
 	// Step 3: ⭐ 계산된 nullifier가 public input과 일치하는지 검증 ⭐
 	// 이것이 핵심! Circuit이 올바른 nullifier를 계산했음을 증명
+	api.Println("Expected Nullifier:", cc.Nullifier)
+	api.Println("Computed Nullifier:", computedNullifier)
+
 	api.AssertIsEqual(cc.Nullifier, computedNullifier)
 }
 

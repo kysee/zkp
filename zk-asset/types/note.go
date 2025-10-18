@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/consensys/gnark-crypto/ecc/bls12-381/twistededwards/eddsa"
+	"github.com/consensys/gnark-crypto/ecc/bn254/twistededwards/eddsa"
 	"github.com/consensys/gnark-crypto/signature"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/holiman/uint256"
@@ -36,34 +36,31 @@ func (n *Note) Commitment() []byte {
 	ax := _pub.A.X.Bytes()
 	ay := _pub.A.Y.Bytes()
 
-	hasher := utils.DefaultHasher()
-	hasher.Reset()
-	hasher.Write([]byte{n.Version})
-	hasher.Write(ax[:])
-	hasher.Write(ay[:])
-	hasher.Write(n.Balance.Bytes())
-	hasher.Write(n.Salt)
-	return hasher.Sum(nil)
+	//// Salt는 랜덤 32바이트인데 field modulus를 초과할 수 있으므로
+	//// field element로 변환 후 다시 bytes로 변환하여 일관성 보장
+	//var saltElem fr.Element
+	//saltElem.SetBytes(n.Salt)
+	//saltBytes := saltElem.Bytes()
+
+	h := utils.DefaultHashSum(
+		[]byte{n.Version},
+		ax[:],
+		ay[:],
+		n.Balance.Bytes(),
+		n.Salt) //saltBytes[:])
+	return h
 }
 
 func (n *Note) Nullifier(sk0, sk1 []byte) []byte {
-	hasher := utils.DefaultHasher()
-	//
-	// verify Nullifier
-	// Step 1: Nullifier key 파생
-	// nk = Hash(private_key, "nullifier_key")
-	hasher.Reset()
-	hasher.Write(sk0)
-	hasher.Write(sk1)
-	// Domain separator (선택적으로 추가)
-	nk := hasher.Sum(nil)
+	// Step 1: Nullifier key generation
+	nk := utils.DefaultHashSum(sk0, sk1)
 
 	// Step 2: Nullifier 계산
 	// nf = Hash(nk, note_commitment)
-	hasher.Reset()
-	hasher.Write(nk)
-	hasher.Write(n.Commitment()) // note commitment
-	return hasher.Sum(nil)
+	return utils.DefaultHashSum(
+		nk,
+		n.Commitment(),
+	)
 }
 
 // SecretNote represents the plaintext data of a note that will be encrypted and sent to the recipient.

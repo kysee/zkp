@@ -4,7 +4,7 @@ import (
 	crand "crypto/rand"
 	"fmt"
 
-	jubjub "github.com/consensys/gnark-crypto/ecc/bls12-381/twistededwards/eddsa"
+	jubjub "github.com/consensys/gnark-crypto/ecc/bn254/twistededwards/eddsa"
 	"github.com/stretchr/testify/require"
 
 	"testing"

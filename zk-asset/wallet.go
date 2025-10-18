@@ -3,11 +3,12 @@ package zk_asset
 import (
 	"bytes"
 	crand "crypto/rand"
+	"fmt"
 	"os"
 
 	"github.com/consensys/gnark-crypto/accumulator/merkletree"
 	"github.com/consensys/gnark-crypto/ecc"
-	jubjub "github.com/consensys/gnark-crypto/ecc/bls12-381/twistededwards/eddsa"
+	jubjub "github.com/consensys/gnark-crypto/ecc/bn254/twistededwards/eddsa"
 	ecc_tedwards "github.com/consensys/gnark-crypto/ecc/twistededwards"
 	"github.com/consensys/gnark/backend"
 	"github.com/consensys/gnark/backend/plonk"
@@ -104,6 +105,8 @@ func (w *Wallet) TransferProof(toAddr string, amt, fee *uint256.Int, ccs constra
 	//
 	// get merkle path info from remote node
 	noteCommitment := noteSpent.Commitment()
+	fmt.Printf("noteCommitment=%s\n", new(uint256.Int).SetBytes(noteCommitment).Dec())
+
 	rootHash, proofPath, idx, depth, numLeaves, err := common.GetNoteCommitmentMerkle(noteCommitment)
 	if err != nil {
 		panic(err)
@@ -128,22 +131,27 @@ func (w *Wallet) TransferProof(toAddr string, amt, fee *uint256.Int, ccs constra
 	for i := 0; i < len(assignment.NoteMerklePath); i++ {
 		if i < len(proofPath) {
 			assignment.NoteMerklePath[i] = proofPath[i]
+			fmt.Printf("proofPath[%d]=%s\n", i, new(uint256.Int).SetBytes(proofPath[i]).Dec())
 		} else {
-			assignment.NoteMerklePath[i] = make([]byte, 32)
+			assignment.NoteMerklePath[i] = 0
 		}
 	}
+	// Amount와 Fee도 field element로 할당
 	assignment.Amount = amt.Bytes()
 	assignment.Fee = fee.Bytes()
 	assignment.ToPub.Assign(assignment.GetCurveId(), toPubKey.Bytes())
 	assignment.Salt1 = salt1
 	assignment.NewNoteCommitment = newNote.Commitment()
 	assignment.ChangeNoteCommitment = changeNote.Commitment()
-	assignment.Nullifier = noteSpent.Nullifier(w.getPrvScalar())
+	prv0, prv1 := w.getPrvScalar()
+	assignment.Nullifier = noteSpent.Nullifier(prv0, prv1)
 
 	wtn, err := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())
 	if err != nil {
 		panic(err)
 	}
+
+	fmt.Printf("---- NewWitness..OK\n")
 
 	proof, err := plonk.Prove(
 		ccs,
@@ -153,10 +161,13 @@ func (w *Wallet) TransferProof(toAddr string, amt, fee *uint256.Int, ccs constra
 			solver.WithLogger(gnarkLogger),
 		),
 	)
+
+	fmt.Printf("---- Prove=%s\n", proof)
+
 	if err != nil {
 		panic(err)
 	}
 	return proof
 }
 
-var gnarkLogger = zerolog.New(os.Stdout).Level(zerolog.DebugLevel).With().Timestamp().Logger()
+var gnarkLogger = zerolog.New(os.Stdout).Level(zerolog.TraceLevel).With().Timestamp().Logger()
