@@ -24,8 +24,11 @@ func SendZKTransaction(zktx *types.ZKTx) error {
 		return err
 	}
 
+	// todo: Verify zktx.MerkleRoot
+	// the below is a temporary solution.
+	// when zktx was made, the merkle root hash may be different from the latest one (`noteCommitmentsRoot`).
 	tmpAssignment := types.ZKCircuit{
-		NoteMerkleRoot:       noteCommitmentsRoot, // use the note's root. not the zktx's root.
+		NoteMerkleRoot:       noteCommitmentsRoot, // don't use the zktx.MerkleRoot; it may be faked.
 		Nullifier:            zktx.Nullifier,
 		NewNoteCommitment:    zktx.NewNoteCommitment,
 		ChangeNoteCommitment: zktx.ChangeNoteCommitment,
