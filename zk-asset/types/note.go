@@ -12,6 +12,9 @@ import (
 	"github.com/kysee/zkp/utils"
 )
 
+type NoteCommitment []byte
+type NoteNullifier []byte
+
 type Note struct {
 	Version byte
 	// todo: Apply diversifier of zcash

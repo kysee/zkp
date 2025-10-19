@@ -10,9 +10,6 @@ import (
 	"github.com/kysee/zkp/zk-asset/types"
 )
 
-type NoteCommitment []byte
-type NoteNullifier []byte
-
 // Merkle tree depth - circuit compile 시 사용한 depth와 동일해야 함
 // depth=20: 2^20 = 1,048,576 leaves 지원
 // depth=32: 2^32 = 4,294,967,296 leaves 지원 (하지만 circuit 크기가 매우 커짐)
@@ -25,8 +22,8 @@ var (
 
 	noteCommitmentsTree *merkletree.Tree
 	noteCommitmentsRoot []byte
-	noteCommitments     []NoteCommitment
-	noteNullifiers      []NoteNullifier
+	noteCommitments     []types.NoteCommitment
+	noteNullifiers      []types.NoteNullifier
 )
 
 func init() {
@@ -34,7 +31,7 @@ func init() {
 	zkCircuit, ZKProvingKey, ZKVerifyingKey = types.CompileCircuit(noteMerkleDepth)
 }
 
-func AddNoteCommitment(commitment NoteCommitment) int {
+func AddNoteCommitment(commitment types.NoteCommitment) int {
 	//fmt.Printf("AddNoteCommitment: %x\n", commitment)
 	noteCommitments = append(noteCommitments, commitment)
 	noteCommitmentsTree.Push(commitment)
@@ -43,11 +40,11 @@ func AddNoteCommitment(commitment NoteCommitment) int {
 	return len(noteCommitments) - 1
 }
 
-func AddNoteNullifier(nullifier NoteNullifier) {
+func AddNoteNullifier(nullifier types.NoteNullifier) {
 	noteNullifiers = append(noteNullifiers, nullifier)
 }
 
-func FindNoteNullifier(nullifier NoteNullifier) NoteNullifier {
+func FindNoteNullifier(nullifier types.NoteNullifier) types.NoteNullifier {
 	for _, n := range noteNullifiers {
 		if bytes.Equal(n, nullifier) {
 			ret := make([]byte, len(n))
@@ -58,7 +55,7 @@ func FindNoteNullifier(nullifier NoteNullifier) NoteNullifier {
 	return nil
 }
 
-func VerifyNoteCommitmentProof(commitment NoteCommitment, root []byte, idx uint64) bool {
+func VerifyNoteCommitmentProof(commitment types.NoteCommitment, root []byte, idx uint64) bool {
 	// Build the proof from scratch for verification
 	var buf bytes.Buffer
 	for _, c := range noteCommitments {

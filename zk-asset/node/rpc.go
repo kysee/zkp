@@ -49,13 +49,13 @@ func SendZKTransaction(zktx *types.ZKTx) error {
 // For Merkle Tree
 //
 
-func GetNoteCommitment(idx int) NoteCommitment {
+func GetNoteCommitment(idx int) types.NoteCommitment {
 	ret := make([]byte, len(noteCommitments[idx]))
 	copy(ret, noteCommitments[idx])
 	return ret
 }
 
-func GetNoteCommitmentMerkle(commitment NoteCommitment) (root []byte, proofSet [][]byte, depth int, idx, numLeaves uint64, err error) {
+func GetNoteCommitmentMerkle(commitment types.NoteCommitment) (root []byte, proofSet [][]byte, depth int, idx, numLeaves uint64, err error) {
 	var buf bytes.Buffer
 	found := false
 	for i, c := range noteCommitments {
