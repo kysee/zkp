@@ -1,24 +1,30 @@
 package zk_asset
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"testing"
 
+	"github.com/consensys/gnark-crypto/accumulator/merkletree"
 	"github.com/consensys/gnark/backend/plonk"
 	"github.com/consensys/gnark/constraint"
 	"github.com/holiman/uint256"
+	"github.com/kysee/zkp/utils"
 	"github.com/kysee/zkp/zk-asset/node"
 	"github.com/kysee/zkp/zk-asset/types"
 	"github.com/stretchr/testify/require"
 )
 
 var (
-	wallets []*Wallet
 	css     constraint.ConstraintSystem
 	prKey   plonk.ProvingKey
+	wallets []*Wallet
 )
 
 func init() {
+	css, prKey, _ = types.CompileCircuit(node.GetNoteCommitmentMerkleDepth())
+
 	for i := 0; i < 10; i++ {
 		wallets = append(wallets, NewWallet())
 	}
@@ -43,8 +49,6 @@ func init() {
 		}
 		wallets[i].AddSecretNote(secretNote)
 	}
-
-	css, prKey, _ = types.CompileCircuit(node.GetNoteCommitmentMerkleDepth())
 }
 
 func TestTransfer(t *testing.T) {
@@ -95,6 +99,9 @@ func TestTransfer(t *testing.T) {
 
 	fmt.Println("sender balance  : ", senderBalance0.Dec(), ">", senderBalance1.Dec())
 	fmt.Println("receiver balance: ", recieverBalance0.Dec(), ">", recieverBalance1.Dec())
+}
+
+func Test_Nullifier(t *testing.T) {
 }
 
 func TestTransfer_WrongMerkleRootHash(t *testing.T) {
@@ -162,4 +169,90 @@ func TestTransfer_NonExistNote(t *testing.T) {
 		prKey, css,
 	)
 	require.Error(t, err)
+}
+
+var fakeMerkleTree = merkletree.New(utils.MiMCHasher())
+var fakeCommitmentsRoot []byte
+var fakeCommitments []types.NoteCommitment
+var fakeMerkleDepth = node.GetNoteCommitmentMerkleDepth()
+
+func TestTransfer_FakeMerkle(t *testing.T) {
+	faker := NewWallet()
+
+	for i := 0; i < 5; i++ {
+		balance := uint256.NewInt(1_000_000_000)
+		salt := types.RandBytes(32)
+
+		fakeNote := &types.Note{
+			Version: 1,
+			PubKey:  faker.PrivateKey.Public(),
+			Balance: balance,
+			Salt:    salt,
+		}
+		commitment := fakeNote.Commitment()
+		fakeCommitments = append(fakeCommitments, commitment)
+		fakeMerkleTree.Push(commitment)
+		fakeCommitmentsRoot = fakeMerkleTree.Root()
+
+		secretNote := &types.SecretNote{
+			Version: 1,
+			Balance: balance,
+			Salt:    salt,
+			Memo:    nil,
+		}
+		faker.AddSecretNote(secretNote)
+	}
+
+	receiver := NewWallet()
+	amt, fee := uint256.NewInt(10), uint256.NewInt(0)
+
+	useSecretNote := faker.GetSecretNote(0)
+	useNote := useSecretNote.ToNoteOf(faker.PrivateKey.Public())
+	useNoteCommitment := useNote.Commitment()
+
+	// get merkle proof info.
+	rootHash, proofPath, depth, idx, numLeaves, err := getFakeCommitmentMerklePaths(useNoteCommitment)
+	require.NoError(t, err)
+	fmt.Printf("Merkle Info: numLeaves=%d, idx=%d, depth=%d, proofPath.len=%d\n", numLeaves, idx, depth, len(proofPath))
+
+	// generate the ZKTx including zk-proof
+	zkTx, _, err := faker.TransferProof(
+		receiver.Address, amt, fee,
+		useNote,
+		rootHash, proofPath, depth, idx,
+		prKey, css,
+	)
+	// the merkle tree is fully faked.
+	// so, the proof generation by TransferProof is succeeded.
+	require.NoError(t, err)
+	// expected error: the zkTx.MerkleRoot is different from the merkle root hash of the node.
+	err = node.SendZKTransaction(zkTx)
+	require.Error(t, err)
+}
+
+func getFakeCommitmentMerklePaths(commitment types.NoteCommitment) (root []byte, proofSet [][]byte, depth int, idx, numLeaves uint64, err error) {
+	var buf bytes.Buffer
+	found := false
+	for i, c := range fakeCommitments {
+		if bytes.Equal(c, commitment) {
+			idx = uint64(i)
+			found = true
+		}
+		buf.Write(c)
+	}
+	if !found {
+		err = errors.New("commitment not found")
+		return
+	}
+	root, proofSet, numLeaves, err = merkletree.BuildReaderProof(
+		&buf,
+		utils.DefaultHasher(),
+		utils.DefaultHasher().Size(),
+		idx,
+	)
+	if err != nil {
+		return
+	}
+	depth = fakeMerkleDepth
+	return
 }
