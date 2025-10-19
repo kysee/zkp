@@ -63,6 +63,15 @@ func (n *Note) Nullifier(sk0, sk1 []byte) []byte {
 	)
 }
 
+func (n *Note) ToSecretNote() *SecretNote {
+	return &SecretNote{
+		Version: n.Version,
+		Balance: n.Balance,
+		Salt:    n.Salt,
+		Memo:    []byte{},
+	}
+}
+
 // SecretNote represents the plaintext data of a note that will be encrypted and sent to the recipient.
 // It is analogous to the Note Plaintext structure in Zcash Sapling.
 type SecretNote struct {
@@ -133,4 +142,13 @@ func (sn *SecretNote) DecodeRLP(s *rlp.Stream) error {
 	sn.Memo = temp.Memo
 
 	return nil
+}
+
+func (sn *SecretNote) ToNoteOf(pubKey signature.PublicKey) *Note {
+	return &Note{
+		Version: sn.Version,
+		PubKey:  pubKey,
+		Balance: sn.Balance,
+		Salt:    sn.Salt,
+	}
 }

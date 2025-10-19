@@ -3,7 +3,6 @@ package zk_asset
 import (
 	"bytes"
 	crand "crypto/rand"
-	"errors"
 	"os"
 
 	"github.com/consensys/gnark-crypto/ecc"
@@ -15,7 +14,6 @@ import (
 	"github.com/consensys/gnark/constraint/solver"
 	"github.com/consensys/gnark/frontend"
 	"github.com/holiman/uint256"
-	"github.com/kysee/zkp/zk-asset/node"
 	"github.com/kysee/zkp/zk-asset/types"
 	"github.com/rs/zerolog"
 )
@@ -76,19 +74,17 @@ func (w *Wallet) getPrvScalar() ([]byte, []byte) {
 }
 
 // TransferProof generates proof and returns `*ZKTx`
-func (w *Wallet) TransferProof(toAddr string, amt, fee *uint256.Int, provingKey plonk.ProvingKey, ccs constraint.ConstraintSystem) (*types.ZKTx, error) {
+func (w *Wallet) TransferProof(
+	toAddr string, amt, fee *uint256.Int,
+	usingNote *types.Note,
+	rootHash []byte, proofPath [][]byte, depth int, idx uint64,
+	provingKey plonk.ProvingKey, ccs constraint.ConstraintSystem,
+) (*types.ZKTx, []*types.Note, error) {
 
 	toPubKey := types.Addr2Pub(toAddr)
 	salt1 := make([]byte, 32)
 	crand.Read(salt1)
 
-	useSecretNote := w.secretNotes[0]
-	usedNote := &types.Note{
-		Version: 1,
-		PubKey:  w.PrivateKey.Public(),
-		Balance: useSecretNote.Balance,
-		Salt:    useSecretNote.Salt,
-	}
 	newNote := &types.Note{
 		Version: 1,
 		PubKey:  toPubKey,
@@ -97,42 +93,31 @@ func (w *Wallet) TransferProof(toAddr string, amt, fee *uint256.Int, provingKey 
 	}
 	changeNote := &types.Note{
 		Version: 1,
-		PubKey:  usedNote.PubKey,
-		Balance: new(uint256.Int).Sub(useSecretNote.Balance, new(uint256.Int).Add(amt, fee)),
-		Salt:    usedNote.Salt,
+		PubKey:  usingNote.PubKey,
+		Balance: new(uint256.Int).Sub(usingNote.Balance, new(uint256.Int).Add(amt, fee)),
+		Salt:    usingNote.Salt,
 	}
 
 	//
 	// get merkle path info from remote node
-	noteCommitment := usedNote.Commitment()
+	noteCommitment := usingNote.Commitment()
 
 	//fmt.Printf("noteCommitment=%s\n", new(uint256.Int).SetBytes(noteCommitment).Dec())
-
-	rootHash, proofPath, idx, depth, _, err := node.GetNoteCommitmentMerkle(noteCommitment)
-	if err != nil {
-		return nil, err
-	}
-	//fmt.Printf("Merkle Info: numLeaves=%d, idx=%d, depth=%d, proofPath.len=%d\n", numLeaves, idx, depth, len(proofPath))
-
-	// verify the proof in plain go using the original short proof
-	if !node.VerifyNoteCommitmentProof(noteCommitment, rootHash, idx) {
-		return nil, errors.New("the merkle proof in plain go should pass")
-	}
 
 	prv0, prv1 := w.getPrvScalar()
 
 	// these are the return values
-	nullifier := usedNote.Nullifier(prv0, prv1)
+	nullifier := usingNote.Nullifier(prv0, prv1)
 	newNoteC := newNote.Commitment()
 	changeNoteC := changeNote.Commitment()
 
 	var assignment types.ZKCircuit
 	assignment.SetCurveId(ecc_tedwards.BN254)
 	assignment.FromPrv0, assignment.FromPrv1 = prv0, prv1
-	assignment.NoteVer = usedNote.Version
-	assignment.FromPub.Assign(assignment.GetCurveId(), usedNote.PubKey.Bytes())
-	assignment.Balance = usedNote.Balance.Bytes()
-	assignment.Salt0 = usedNote.Salt
+	assignment.NoteVer = usingNote.Version
+	assignment.FromPub.Assign(assignment.GetCurveId(), usingNote.PubKey.Bytes())
+	assignment.Balance = usingNote.Balance.Bytes()
+	assignment.Salt0 = usingNote.Salt
 	assignment.NoteCommitment = noteCommitment
 	assignment.NoteIdx = idx
 	assignment.NoteMerkleRoot = rootHash
@@ -159,7 +144,7 @@ func (w *Wallet) TransferProof(toAddr string, amt, fee *uint256.Int, provingKey 
 
 	wtn, err := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	proof, err := plonk.Prove(
@@ -172,12 +157,12 @@ func (w *Wallet) TransferProof(toAddr string, amt, fee *uint256.Int, provingKey 
 	)
 
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	bufProof := bytes.NewBuffer(nil)
 	if _, err := proof.WriteTo(bufProof); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	return &types.ZKTx{
@@ -186,7 +171,7 @@ func (w *Wallet) TransferProof(toAddr string, amt, fee *uint256.Int, provingKey 
 		Nullifier:            nullifier,
 		NewNoteCommitment:    newNoteC,
 		ChangeNoteCommitment: changeNoteC,
-	}, nil
+	}, []*types.Note{newNote, changeNote}, nil
 }
 
 var gnarkLogger = zerolog.New(os.Stdout).Level(zerolog.TraceLevel).With().Timestamp().Logger()
