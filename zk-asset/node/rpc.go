@@ -25,7 +25,7 @@ func SendZKTransaction(zktx *types.ZKTx) error {
 	}
 
 	tmpAssignment := types.ZKCircuit{
-		NoteMerkleRoot:       zktx.MerkleRoot,
+		NoteMerkleRoot:       noteCommitmentsRoot, // use the note's root. not the zktx's root.
 		Nullifier:            zktx.Nullifier,
 		NewNoteCommitment:    zktx.NewNoteCommitment,
 		ChangeNoteCommitment: zktx.ChangeNoteCommitment,
@@ -41,6 +41,7 @@ func SendZKTransaction(zktx *types.ZKTx) error {
 
 	AddNoteNullifier(zktx.Nullifier)
 	AddNoteCommitment(zktx.NewNoteCommitment)
+	AddNoteCommitment(zktx.ChangeNoteCommitment)
 	return nil
 }
 
@@ -54,13 +55,19 @@ func GetNoteCommitment(idx int) NoteCommitment {
 	return ret
 }
 
-func GetNoteCommitmentMerkle(commitment NoteCommitment) (root []byte, proofSet [][]byte, idx, depth, numLeaves uint64, err error) {
+func GetNoteCommitmentMerkle(commitment NoteCommitment) (root []byte, proofSet [][]byte, depth int, idx, numLeaves uint64, err error) {
 	var buf bytes.Buffer
+	found := false
 	for i, c := range noteCommitments {
 		if bytes.Equal(c, commitment) {
 			idx = uint64(i)
+			found = true
 		}
 		buf.Write(c)
+	}
+	if !found {
+		err = errors.New("commitment not found")
+		return
 	}
 	root, proofSet, numLeaves, err = merkletree.BuildReaderProof(
 		&buf,
@@ -71,7 +78,7 @@ func GetNoteCommitmentMerkle(commitment NoteCommitment) (root []byte, proofSet [
 	if err != nil {
 		return
 	}
-	depth = uint64(noteMerkleDepth)
+	depth = noteMerkleDepth
 	return
 }
 
