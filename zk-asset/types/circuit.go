@@ -28,7 +28,7 @@ type ZKCircuit struct {
 	FromPrv0 frontend.Variable
 	FromPrv1 frontend.Variable
 
-	NoteVer frontend.Variable `gnark:",public"`
+	NoteVer frontend.Variable
 
 	// exist note
 	FromPub        std_eddsa.PublicKey
@@ -39,15 +39,15 @@ type ZKCircuit struct {
 	NoteMerklePath []frontend.Variable
 	NoteMerkleRoot frontend.Variable `gnark:",public"`
 
-	// new note and changes note
+	// new note and change note
 	Amount frontend.Variable
 	Fee    frontend.Variable
 	ToPub  std_eddsa.PublicKey
 	Salt1  frontend.Variable
 
+	Nullifier            frontend.Variable `gnark:",public"`
 	NewNoteCommitment    frontend.Variable `gnark:",public"`
 	ChangeNoteCommitment frontend.Variable `gnark:",public"`
-	Nullifier            frontend.Variable `gnark:",public"`
 }
 
 func (cc *ZKCircuit) Define(api frontend.API) error {
@@ -225,19 +225,19 @@ func (cc *ZKCircuit) verifyChangeNoteCommitment(api frontend.API, hasher hash.Fi
 	//
 	// verify ChangeNoteCommitment
 	//
-	changes := api.Sub(cc.Balance, cc.Amount, cc.Fee)
+	change := api.Sub(cc.Balance, cc.Amount, cc.Fee)
 
-	// changes가 0인지 확인
-	isZero := api.IsZero(changes)
+	// change가 0인지 확인
+	isZero := api.IsZero(change)
 
-	// changes > 0인 경우 거스름돈 노트 해시 계산
+	// change > 0인 경우 거스름돈 노트 해시 계산
 	hasher.Reset()
-	hasher.Write(cc.NoteVer, cc.FromPub.A.X, cc.FromPub.A.Y, changes, cc.Salt0)
-	changesNote := hasher.Sum()
+	hasher.Write(cc.NoteVer, cc.FromPub.A.X, cc.FromPub.A.Y, change, cc.Salt0)
+	changeNoteC := hasher.Sum()
 
-	// changes가 0이면 noteChanges는 0이어야 하고,
-	// changes가 0이 아니면 noteChanges는 changesNote와 같아야 함
-	calculatedCommitment := api.Select(isZero, 0, changesNote)
+	// change가 0 이면 `calculatedCommitment`는 무조건 `0`,
+	// change가 0 아니면 `calculatedCommitment`는 올바른 change 를 포함하여 해싱된 값.
+	calculatedCommitment := api.Select(isZero, 0, changeNoteC)
 
 	api.Println("Expected ChangeNoteCommitment:", cc.ChangeNoteCommitment)
 	api.Println("Computed ChangeNoteCommitment:", calculatedCommitment)

@@ -1,11 +1,13 @@
 package zk_asset
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/holiman/uint256"
 	"github.com/kysee/zkp/zk-asset/node"
 	"github.com/kysee/zkp/zk-asset/types"
+	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -45,6 +47,17 @@ func TestTransfer(t *testing.T) {
 	sender := wallets[0]
 	receiver := wallets[5]
 
-	_ = sender.TransferProof(receiver.Address, uint256.NewInt(10), uint256.NewInt(0), prKey, css)
+	zkTx, err := sender.TransferProof(receiver.Address, uint256.NewInt(10), uint256.NewInt(0), prKey, css)
+	require.NoError(t, err)
+	fmt.Printf("proof      : (%4dB) %x\n", len(zkTx.ProofBytes), zkTx.ProofBytes)
+	fmt.Printf("merkle root: (%4dB) %x\n", len(zkTx.MerkleRoot), zkTx.MerkleRoot)
+	fmt.Printf("nullifier  : (%4dB) %x\n", len(zkTx.Nullifier), zkTx.Nullifier)
+	fmt.Printf("newNote    : (%4dB) %x\n", len(zkTx.NewNoteCommitment), zkTx.NewNoteCommitment)
+	fmt.Printf("changeNote : (%4dB) %x\n", len(zkTx.ChangeNoteCommitment), zkTx.ChangeNoteCommitment)
+
+	require.NoError(t, node.SendZKTransaction(zkTx))
+
+	newRoot := node.GetNoteCommitmentsRoot()
+	fmt.Printf("---\nnew merkle : (%4dB) %x\n", len(newRoot), newRoot)
 
 }
