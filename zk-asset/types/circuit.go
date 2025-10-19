@@ -175,6 +175,7 @@ func (cc *ZKCircuit) verifyNewNoteCommitment(api frontend.API, hasher hash.Field
 
 // verifyMerkleProof는 gnark std library의 VerifyProof를 사용
 func (cc *ZKCircuit) verifyMerkleProof(api frontend.API, hasher hash.FieldHasher) {
+	api.AssertIsEqual(cc.NoteMerklePath[0], cc.NoteCommitment)
 	mp := merkle.MerkleProof{
 		RootHash: cc.NoteMerkleRoot,
 		Path:     cc.NoteMerklePath,
@@ -187,13 +188,18 @@ func (cc *ZKCircuit) verifyMerkleProof(api frontend.API, hasher hash.FieldHasher
 	// The binary decomposition of the leaf index will be 	1 0 0 1 0 1 (little endian)
 	binLeaf := api.ToBinary(cc.NoteIdx, depth)
 
+	for i := 0; i < 5; i++ {
+		api.Println("   Path[", i, "]:", mp.Path[i])
+	}
 	for i := 1; i < len(mp.Path); i++ { // the size of the loop is fixed -> one circuit per size
 		d1 := api.Select(binLeaf[i-1], mp.Path[i], sum)
 		d2 := api.Select(binLeaf[i-1], sum, mp.Path[i])
 		newSum := _nodeSum(hasher, d1, d2)
-
 		sum = api.Select(api.IsZero(mp.Path[i]), sum, newSum)
 	}
+
+	api.Println("Expected RootHash:", cc.NoteMerkleRoot)
+	api.Println("Computed RootHash:", sum)
 
 	// Compare our calculated Merkle root to the desired Merkle root.
 	api.AssertIsEqual(sum, mp.RootHash)
