@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/consensys/gnark-crypto/accumulator/merkletree"
 	"github.com/consensys/gnark-crypto/ecc"
 	jubjub "github.com/consensys/gnark-crypto/ecc/bn254/twistededwards/eddsa"
 	ecc_tedwards "github.com/consensys/gnark-crypto/ecc/twistededwards"
@@ -16,7 +15,6 @@ import (
 	"github.com/consensys/gnark/constraint/solver"
 	"github.com/consensys/gnark/frontend"
 	"github.com/holiman/uint256"
-	"github.com/kysee/zkp/utils"
 	"github.com/kysee/zkp/zk-asset/common"
 	"github.com/kysee/zkp/zk-asset/types"
 	"github.com/rs/zerolog"
@@ -77,7 +75,7 @@ func (w *Wallet) getPrvScalar() ([]byte, []byte) {
 	return s[:16], s[16:32]
 }
 
-func (w *Wallet) TransferProof(toAddr string, amt, fee *uint256.Int, ccs constraint.ConstraintSystem) plonk.Proof {
+func (w *Wallet) TransferProof(toAddr string, amt, fee *uint256.Int, provingKey plonk.ProvingKey, ccs constraint.ConstraintSystem) plonk.Proof {
 	toPubKey := types.Addr2Pub(toAddr)
 	salt1 := make([]byte, 32)
 	crand.Read(salt1)
@@ -105,15 +103,16 @@ func (w *Wallet) TransferProof(toAddr string, amt, fee *uint256.Int, ccs constra
 	//
 	// get merkle path info from remote node
 	noteCommitment := noteSpent.Commitment()
-	fmt.Printf("noteCommitment=%s\n", new(uint256.Int).SetBytes(noteCommitment).Dec())
+	//fmt.Printf("noteCommitment=%s\n", new(uint256.Int).SetBytes(noteCommitment).Dec())
 
-	rootHash, proofPath, idx, depth, numLeaves, err := common.GetNoteCommitmentMerkle(noteCommitment)
+	rootHash, proofPath, idx, depth, _, err := common.GetNoteCommitmentMerkle(noteCommitment)
 	if err != nil {
 		panic(err)
 	}
-	// verify the proof in plain go
-	verified := merkletree.VerifyProof(utils.DefaultHasher(), rootHash, proofPath, idx, numLeaves)
-	if !verified {
+	//fmt.Printf("Merkle Info: numLeaves=%d, idx=%d, depth=%d, proofPath.len=%d\n", numLeaves, idx, depth, len(proofPath))
+
+	// verify the proof in plain go using the original short proof
+	if !common.VerifyNoteCommitmentProof(noteCommitment, rootHash, idx) {
 		panic("the merkle proof in plain go should pass")
 	}
 
@@ -127,16 +126,20 @@ func (w *Wallet) TransferProof(toAddr string, amt, fee *uint256.Int, ccs constra
 	assignment.NoteCommitment = noteCommitment
 	assignment.NoteIdx = idx
 	assignment.NoteMerkleRoot = rootHash
+
+	// Proof path 할당
+	// GetNoteCommitmentMerkle이 이미 full depth로 패딩된 proof를 반환
 	assignment.NoteMerklePath = make([]frontend.Variable, depth+1)
 	for i := 0; i < len(assignment.NoteMerklePath); i++ {
+		var v []byte
 		if i < len(proofPath) {
-			assignment.NoteMerklePath[i] = proofPath[i]
-			fmt.Printf("proofPath[%d]=%s\n", i, new(uint256.Int).SetBytes(proofPath[i]).Dec())
+			v = proofPath[i]
 		} else {
-			assignment.NoteMerklePath[i] = 0
+			v = []byte{0x0}
 		}
+		assignment.NoteMerklePath[i] = v
 	}
-	// Amount와 Fee도 field element로 할당
+
 	assignment.Amount = amt.Bytes()
 	assignment.Fee = fee.Bytes()
 	assignment.ToPub.Assign(assignment.GetCurveId(), toPubKey.Bytes())
@@ -155,7 +158,7 @@ func (w *Wallet) TransferProof(toAddr string, amt, fee *uint256.Int, ccs constra
 
 	proof, err := plonk.Prove(
 		ccs,
-		types.ProvingKey,
+		provingKey,
 		wtn,
 		backend.WithSolverOptions(
 			solver.WithLogger(gnarkLogger),

@@ -9,6 +9,7 @@ import (
 	"github.com/consensys/gnark/constraint"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/cs/scs"
+	"github.com/consensys/gnark/std/accumulator/merkle"
 	"github.com/consensys/gnark/std/algebra/native/twistededwards"
 	std_tedwards "github.com/consensys/gnark/std/algebra/native/twistededwards"
 	"github.com/consensys/gnark/std/hash"
@@ -18,9 +19,7 @@ import (
 )
 
 var (
-	E128         = new(big.Int).Lsh(big.NewInt(1), 128)
-	ProvingKey   plonk.ProvingKey
-	VerifyingKey plonk.VerifyingKey
+	E128 = new(big.Int).Lsh(big.NewInt(1), 128)
 )
 
 type ZKCircuit struct {
@@ -64,8 +63,8 @@ func (cc *ZKCircuit) Define(api frontend.API) error {
 
 	cc.verifyKeys(api, curve)
 	cc.verifyNoteCommitment(api, &hasher)
-	//cc.verifyNewNoteCommitment(api, &hasher)
-	//cc.verifyChangeNoteCommitment(api, &hasher)
+	cc.verifyNewNoteCommitment(api, &hasher)
+	cc.verifyChangeNoteCommitment(api, &hasher)
 	return nil
 }
 
@@ -111,20 +110,12 @@ func (cc *ZKCircuit) verifyKeys(api frontend.API, curve std_tedwards.Curve) {
 func (cc *ZKCircuit) verifyNoteCommitment(api frontend.API, hasher hash.FieldHasher) {
 	//
 	// verify NoteCommitment
-	//// check merkle proof
-	//merkleProof := merkle.MerkleProof{
-	//	RootHash: cc.NoteMerkleRoot,
-	//	Path:     cc.NoteMerklePath,
-	//}
-	//hasher.Reset()
-	//merkleProof.VerifyProof(api, hasher, cc.NoteIdx)
+	// Merkle proof 검증 - numLeaves를 고려한 custom verification
+	cc.verifyMerkleProof(api, hasher)
 
 	// check balance
 	needAmt := api.Add(cc.Amount, cc.Fee)
 	api.AssertIsLessOrEqual(needAmt, cc.Balance)
-
-	api.Println("NeedAmt:", needAmt)
-	api.Println("Balance:", cc.Balance)
 
 	hasher.Reset()
 	// 각 필드를 개별적으로 Write (Go 코드와 동일하게)
@@ -146,21 +137,15 @@ func (cc *ZKCircuit) verifyNoteCommitment(api frontend.API, hasher hash.FieldHas
 	// verify Nullifier
 	// Step 1: Nullifier key 파생
 	// nk = Hash(private_key, "nullifier_key")
-	api.Println("=== Nullifier Calculation ===")
-	api.Println("FromPrv0:", cc.FromPrv0)
-	api.Println("FromPrv1:", cc.FromPrv1)
 
 	hasher.Reset()
 	// 각 필드를 개별적으로 Write
 	hasher.Write(cc.FromPrv0, cc.FromPrv1)
 	// Domain separator (선택적으로 추가)
 	nk := hasher.Sum()
-	api.Println("nk (nullifier key):", nk)
 
 	// Step 2: Nullifier 계산
 	// nf = Hash(nk, note_commitment)
-	api.Println("NoteCommitment for nullifier:", cc.NoteCommitment)
-
 	hasher.Reset()
 	hasher.Write(nk, cc.NoteCommitment) // note commitment
 	computedNullifier := hasher.Sum()
@@ -180,7 +165,60 @@ func (cc *ZKCircuit) verifyNewNoteCommitment(api frontend.API, hasher hash.Field
 	//
 	hasher.Reset()
 	hasher.Write(cc.NoteVer, cc.ToPub.A.X, cc.ToPub.A.Y, cc.Amount, cc.Salt1)
-	api.AssertIsEqual(cc.NewNoteCommitment, hasher.Sum())
+	calculatedCommitment := hasher.Sum()
+
+	api.Println("Expected NewNoteCommitment:", cc.NewNoteCommitment)
+	api.Println("Computed NewNoteCommitment:", calculatedCommitment)
+
+	api.AssertIsEqual(cc.NewNoteCommitment, calculatedCommitment)
+}
+
+// verifyMerkleProof는 gnark std library의 VerifyProof를 사용
+func (cc *ZKCircuit) verifyMerkleProof(api frontend.API, hasher hash.FieldHasher) {
+	mp := merkle.MerkleProof{
+		RootHash: cc.NoteMerkleRoot,
+		Path:     cc.NoteMerklePath,
+	}
+	depth := len(mp.Path) - 1
+	sum := _leafSum(hasher, mp.Path[0])
+
+	// The binary decomposition is the bitwise negation of the order of hashes ->
+	// If the path in the plain go code is 					0 1 1 0 1 0
+	// The binary decomposition of the leaf index will be 	1 0 0 1 0 1 (little endian)
+	binLeaf := api.ToBinary(cc.NoteIdx, depth)
+
+	for i := 1; i < len(mp.Path); i++ { // the size of the loop is fixed -> one circuit per size
+		d1 := api.Select(binLeaf[i-1], mp.Path[i], sum)
+		d2 := api.Select(binLeaf[i-1], sum, mp.Path[i])
+		newSum := _nodeSum(hasher, d1, d2)
+
+		sum = api.Select(api.IsZero(mp.Path[i]), sum, newSum)
+	}
+
+	// Compare our calculated Merkle root to the desired Merkle root.
+	api.AssertIsEqual(sum, mp.RootHash)
+}
+
+// leafSum returns the hash created from data inserted to form a leaf.
+// Without domain separation.
+func _leafSum(h hash.FieldHasher, data frontend.Variable) frontend.Variable {
+
+	h.Reset()
+	h.Write(data)
+	res := h.Sum()
+
+	return res
+}
+
+// nodeSum returns the hash created from data inserted to form a leaf.
+// Without domain separation.
+func _nodeSum(h hash.FieldHasher, a, b frontend.Variable) frontend.Variable {
+
+	h.Reset()
+	h.Write(a, b)
+	res := h.Sum()
+
+	return res
 }
 
 func (cc *ZKCircuit) verifyChangeNoteCommitment(api frontend.API, hasher hash.FieldHasher) {
@@ -199,8 +237,12 @@ func (cc *ZKCircuit) verifyChangeNoteCommitment(api frontend.API, hasher hash.Fi
 
 	// changes가 0이면 noteChanges는 0이어야 하고,
 	// changes가 0이 아니면 noteChanges는 changesNote와 같아야 함
-	expectedChanges := api.Select(isZero, 0, changesNote)
-	api.AssertIsEqual(cc.ChangeNoteCommitment, expectedChanges)
+	calculatedCommitment := api.Select(isZero, 0, changesNote)
+
+	api.Println("Expected ChangeNoteCommitment:", cc.ChangeNoteCommitment)
+	api.Println("Computed ChangeNoteCommitment:", calculatedCommitment)
+
+	api.AssertIsEqual(cc.ChangeNoteCommitment, calculatedCommitment)
 }
 
 func (cc *ZKCircuit) SetCurveId(curveID ecc_tedwards.ID) {
@@ -223,7 +265,7 @@ func (cc *ZKCircuit) AssignTransfer(n *Note) {
 	cc.NoteCommitment = n.Commitment()
 }
 
-func CompileCircuit(depth int) constraint.ConstraintSystem {
+func CompileCircuit(depth int) (constraint.ConstraintSystem, plonk.ProvingKey, plonk.VerifyingKey) {
 	var err error
 	var cc ZKCircuit
 
@@ -240,9 +282,10 @@ func CompileCircuit(depth int) constraint.ConstraintSystem {
 		panic(err)
 	}
 
-	if ProvingKey, VerifyingKey, err = plonk.Setup(ccs, srs, srsLagrange); err != nil {
+	provingKey, verifyingKey, err := plonk.Setup(ccs, srs, srsLagrange)
+	if err != nil {
 		panic(err)
 	}
 
-	return ccs
+	return ccs, provingKey, verifyingKey
 }
