@@ -4,13 +4,12 @@ import (
 	"testing"
 
 	"github.com/holiman/uint256"
-	"github.com/kysee/zkp/zk-asset/common"
+	"github.com/kysee/zkp/zk-asset/node"
 	"github.com/kysee/zkp/zk-asset/types"
 )
 
 var (
 	wallets []*Wallet
-	SR1CS   = types.CompileCircuit(32)
 )
 
 func init() {
@@ -28,7 +27,7 @@ func init() {
 			Balance: balance,
 			Salt:    salt,
 		}
-		common.AddNoteCommitment(note.Commitment())
+		node.AddNoteCommitment(note.Commitment())
 
 		secretNote := &types.SecretNote{
 			Version: 1,
@@ -41,9 +40,11 @@ func init() {
 }
 
 func TestTransfer(t *testing.T) {
+	css, prKey, _ := types.CompileCircuit(node.GetNoteCommitmentMerkleDepth())
+
 	sender := wallets[0]
 	receiver := wallets[5]
 
-	_ = sender.TransferProof(receiver.Address, uint256.NewInt(10), uint256.NewInt(0), SR1CS)
+	_ = sender.TransferProof(receiver.Address, uint256.NewInt(10), uint256.NewInt(0), prKey, css)
 
 }

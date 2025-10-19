@@ -15,7 +15,7 @@ import (
 	"github.com/consensys/gnark/constraint/solver"
 	"github.com/consensys/gnark/frontend"
 	"github.com/holiman/uint256"
-	"github.com/kysee/zkp/zk-asset/common"
+	"github.com/kysee/zkp/zk-asset/node"
 	"github.com/kysee/zkp/zk-asset/types"
 	"github.com/rs/zerolog"
 )
@@ -105,14 +105,14 @@ func (w *Wallet) TransferProof(toAddr string, amt, fee *uint256.Int, provingKey 
 	noteCommitment := noteSpent.Commitment()
 	//fmt.Printf("noteCommitment=%s\n", new(uint256.Int).SetBytes(noteCommitment).Dec())
 
-	rootHash, proofPath, idx, depth, _, err := common.GetNoteCommitmentMerkle(noteCommitment)
+	rootHash, proofPath, idx, depth, _, err := node.GetNoteCommitmentMerkle(noteCommitment)
 	if err != nil {
 		panic(err)
 	}
 	//fmt.Printf("Merkle Info: numLeaves=%d, idx=%d, depth=%d, proofPath.len=%d\n", numLeaves, idx, depth, len(proofPath))
 
 	// verify the proof in plain go using the original short proof
-	if !common.VerifyNoteCommitmentProof(noteCommitment, rootHash, idx) {
+	if !node.VerifyNoteCommitmentProof(noteCommitment, rootHash, idx) {
 		panic("the merkle proof in plain go should pass")
 	}
 
