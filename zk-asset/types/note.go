@@ -158,11 +158,6 @@ func (sn *SecretNote) ToNoteOf(pubKey signature.PublicKey) *Note {
 }
 
 func (sn *SecretNote) Encrypt(sharedSecret, ad []byte) ([]byte, error) {
-	m, err := rlp.EncodeToBytes(sn)
-	if err != nil {
-		return nil, err
-	}
-
 	saplingKDF, err := crypto.SaplingKDF(sharedSecret, 44)
 	if err != nil {
 		return nil, err
@@ -170,5 +165,46 @@ func (sn *SecretNote) Encrypt(sharedSecret, ad []byte) ([]byte, error) {
 	encKey := saplingKDF[:32]
 	nonce := saplingKDF[32:44]
 
-	return crypto.ChaCha20Poly1305_Encrypt(encKey, nonce, m, ad)
+	return crypto.ChaCha20Poly1305_Encrypt(encKey, nonce, sn.Bytes(), ad)
+}
+
+func (sn *SecretNote) Decrypt(sharedSecret, ad, ciphertext []byte) error {
+	saplingKDF, err := crypto.SaplingKDF(sharedSecret, 44)
+	if err != nil {
+		return err
+	}
+	encKey := saplingKDF[:32]
+	nonce := saplingKDF[32:44]
+
+	plaintext, err := crypto.ChaCha20Poly1305_Decrypt(encKey, nonce, ciphertext, ad)
+	return rlp.DecodeBytes(plaintext, sn)
+}
+
+// EncryptSecretNote encrypts a SecretNote and returns the ciphertext and temporarily public key
+func EncryptSecretNote(sn *SecretNote, ad []byte, receiverPubKey signature.PublicKey) ([]byte, []byte, error) {
+	// Encrypt the SecretNote
+	tmpKey, err := crypto.NewKey()
+	if err != nil {
+		return nil, nil, err
+	}
+	sharedSecret, err := crypto.ECDHSharedSecret(tmpKey, receiverPubKey)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	ciphertext, err := sn.Encrypt(sharedSecret, ad)
+	if err != nil {
+		return nil, nil, err
+	}
+	return ciphertext, tmpKey.Public().Bytes(), nil
+}
+
+func DecryptSecretNote(ciphertext []byte, ad []byte, myPrivKey signature.Signer, senderPubKeyBytes []byte) (*SecretNote, error) {
+	pubKey := crypto.NewPub()
+	pubKey.SetBytes(senderPubKeyBytes)
+	sharedSecret, err := crypto.ECDHSharedSecret(myPrivKey, pubKey)
+
+	sn := &SecretNote{}
+	err = sn.Decrypt(sharedSecret, ad, ciphertext)
+	return sn, err
 }
