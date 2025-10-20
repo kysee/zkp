@@ -37,6 +37,8 @@ func init() {
 		salt := types.RandBytes(32)
 
 		w := types.NewWallet()
+		types.Wallets = append(types.Wallets, w)
+
 		note := &types.Note{
 			Version: 1,
 			PubKey:  w.PrivateKey.Public(),
@@ -51,8 +53,15 @@ func init() {
 			Salt:    salt,
 			Memo:    nil,
 		}
-		w.AddSecretNote(secretNote)
-		types.Wallets = append(types.Wallets, w)
+
+		//
+		// Encrypt the SecretNote
+
+		encSecretNote, bzPubKey, err := types.EncryptSecretNote(secretNote, nil, w.PrivateKey.Public())
+		if err != nil {
+			panic(err)
+		}
+		AddEncryptedSecretNote(append(bzPubKey, encSecretNote...))
 	}
 }
 
@@ -102,20 +111,15 @@ func VerifyNoteCommitmentProof(commitment types.NoteCommitment, root []byte, idx
 }
 
 // for secret notes
-var secretNotes [][]byte // [ECDHE public key | ciphertext]
+var encryptedSecretNotes [][]byte // [ECDHE public key | ciphertext]
 
-func AddSecretNote(sn []byte) {
-	secretNotes = append(secretNotes, sn)
+func AddEncryptedSecretNote(enc []byte) {
+	encryptedSecretNotes = append(encryptedSecretNotes, enc)
 }
 
-func GetSecretNote(idx int) []byte {
-	if idx < len(secretNotes) {
-		return secretNotes[idx]
+func GetEncryptedSecretNote(idx int) []byte {
+	if idx < len(encryptedSecretNotes) {
+		return encryptedSecretNotes[idx]
 	}
 	return nil
-}
-
-func ParseSecretNote(sn []byte) ([]byte, []byte) {
-	// ECDHE public key, ciphertext
-	return sn[:32], sn[32:]
 }
