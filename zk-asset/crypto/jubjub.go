@@ -1,14 +1,27 @@
 package crypto
 
 import (
+	crand "crypto/rand"
 	"errors"
 	"fmt"
 	"math/big"
 
 	tedwards "github.com/consensys/gnark-crypto/ecc/bn254/twistededwards"
 	jubjub "github.com/consensys/gnark-crypto/ecc/bn254/twistededwards/eddsa"
+	"github.com/consensys/gnark-crypto/signature"
 	"golang.org/x/crypto/blake2s"
 )
+
+//
+// GenerateKey
+
+func NewKey() (signature.Signer, error) {
+	return jubjub.GenerateKey(crand.Reader)
+}
+
+func NewPub() signature.PublicKey {
+	return new(jubjub.PublicKey)
+}
 
 // ECDHEComputeSharedSecret computes the ECDHE shared secret
 // sharedSecret = privateKey * otherPublicKey

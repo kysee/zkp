@@ -19,14 +19,14 @@ import (
 var (
 	css     constraint.ConstraintSystem
 	prKey   plonk.ProvingKey
-	wallets []*Wallet
+	wallets []*types.Wallet
 )
 
 func init() {
 	css, prKey, _ = types.CompileCircuit(node.GetNoteCommitmentMerkleDepth())
 
 	for i := 0; i < 10; i++ {
-		wallets = append(wallets, NewWallet())
+		wallets = append(wallets, types.NewWallet())
 	}
 
 	for i := 0; i < 5; i++ {
@@ -177,7 +177,7 @@ var fakeCommitments []types.NoteCommitment
 var fakeMerkleDepth = node.GetNoteCommitmentMerkleDepth()
 
 func TestTransfer_FakeMerkle(t *testing.T) {
-	faker := NewWallet()
+	faker := types.NewWallet()
 
 	for i := 0; i < 5; i++ {
 		balance := uint256.NewInt(1_000_000_000)
@@ -203,7 +203,7 @@ func TestTransfer_FakeMerkle(t *testing.T) {
 		faker.AddSecretNote(secretNote)
 	}
 
-	receiver := NewWallet()
+	receiver := types.NewWallet()
 	amt, fee := uint256.NewInt(10), uint256.NewInt(0)
 
 	useSecretNote := faker.GetSecretNote(0)

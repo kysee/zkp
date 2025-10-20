@@ -5,7 +5,8 @@ import (
 	"strings"
 
 	"github.com/btcsuite/btcutil/base58"
-	jubjub "github.com/consensys/gnark-crypto/ecc/bn254/twistededwards/eddsa"
+	"github.com/consensys/gnark-crypto/signature"
+	"github.com/kysee/zkp/zk-asset/crypto"
 )
 
 const ver = 0x01
@@ -28,16 +29,16 @@ func DecodeAddress(addr string) ([]byte, error) {
 	return bz, nil
 }
 
-func Pub2Addr(pubKey *jubjub.PublicKey) string {
+func Pub2Addr(pubKey signature.PublicKey) string {
 	return EncodeAddress(pubKey.Bytes())
 }
 
-func Addr2Pub(addr string) *jubjub.PublicKey {
+func Addr2Pub(addr string) signature.PublicKey {
 	pubKeyBytes, err := DecodeAddress(addr)
 	if err != nil {
 		panic(err)
 	}
-	pubKey := new(jubjub.PublicKey)
-	_, _ = pubKey.A.SetBytes(pubKeyBytes)
+	pubKey := crypto.NewPub()
+	_, _ = pubKey.SetBytes(pubKeyBytes)
 	return pubKey
 }

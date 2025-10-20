@@ -1,4 +1,4 @@
-package zk_asset
+package types
 
 import (
 	"bytes"
@@ -6,37 +6,41 @@ import (
 	"os"
 
 	"github.com/consensys/gnark-crypto/ecc"
-	jubjub "github.com/consensys/gnark-crypto/ecc/bn254/twistededwards/eddsa"
 	ecc_tedwards "github.com/consensys/gnark-crypto/ecc/twistededwards"
+	"github.com/consensys/gnark-crypto/signature"
 	"github.com/consensys/gnark/backend"
 	"github.com/consensys/gnark/backend/plonk"
 	"github.com/consensys/gnark/constraint"
 	"github.com/consensys/gnark/constraint/solver"
 	"github.com/consensys/gnark/frontend"
 	"github.com/holiman/uint256"
-	"github.com/kysee/zkp/zk-asset/types"
+	"github.com/kysee/zkp/zk-asset/crypto"
 	"github.com/rs/zerolog"
 )
 
 type Wallet struct {
 	Address     string
-	PrivateKey  *jubjub.PrivateKey
-	secretNotes []*types.SecretNote
+	PrivateKey  signature.Signer
+	secretNotes []*SecretNote
 }
 
+var (
+	Wallets = make([]*Wallet, 0)
+)
+
 func NewWallet() *Wallet {
-	prvk, _ := jubjub.GenerateKey(crand.Reader)
+	prvk, _ := crypto.NewKey()
 	return &Wallet{
-		Address:    types.Pub2Addr(&prvk.PublicKey),
+		Address:    Pub2Addr(prvk.Public()),
 		PrivateKey: prvk,
 	}
 }
 
-func (w *Wallet) AddSecretNote(note *types.SecretNote) {
+func (w *Wallet) AddSecretNote(note *SecretNote) {
 	w.secretNotes = append(w.secretNotes, note)
 }
 
-func (w *Wallet) GetSecretNote(idx int) *types.SecretNote {
+func (w *Wallet) GetSecretNote(idx int) *SecretNote {
 	if idx < len(w.secretNotes) {
 		return w.secretNotes[idx]
 	}
@@ -47,7 +51,7 @@ func (w *Wallet) GetSecretNotesCount() int {
 	return len(w.secretNotes)
 }
 
-func (w *Wallet) DelSecretNote(note *types.SecretNote) {
+func (w *Wallet) DelSecretNote(note *SecretNote) {
 	found := -1
 	for i, n := range w.secretNotes {
 		if bytes.Equal(n.Salt, note.Salt) {
@@ -76,22 +80,22 @@ func (w *Wallet) getPrvScalar() ([]byte, []byte) {
 // TransferProof generates proof and returns `*ZKTx`
 func (w *Wallet) TransferProof(
 	toAddr string, amt, fee *uint256.Int,
-	usingNote *types.Note,
+	usingNote *Note,
 	rootHash []byte, proofPath [][]byte, depth int, idx uint64,
 	provingKey plonk.ProvingKey, ccs constraint.ConstraintSystem,
-) (*types.ZKTx, []*types.Note, error) {
+) (*ZKTx, []*Note, error) {
 
-	toPubKey := types.Addr2Pub(toAddr)
+	toPubKey := Addr2Pub(toAddr)
 	salt1 := make([]byte, 32)
 	crand.Read(salt1)
 
-	newNote := &types.Note{
+	newNote := &Note{
 		Version: 1,
 		PubKey:  toPubKey,
 		Balance: amt,
 		Salt:    salt1,
 	}
-	changeNote := &types.Note{
+	changeNote := &Note{
 		Version: 1,
 		PubKey:  usingNote.PubKey,
 		Balance: new(uint256.Int).Sub(usingNote.Balance, new(uint256.Int).Add(amt, fee)),
@@ -111,7 +115,7 @@ func (w *Wallet) TransferProof(
 	newNoteC := newNote.Commitment()
 	changeNoteC := changeNote.Commitment()
 
-	var assignment types.ZKCircuit
+	var assignment ZKCircuit
 	assignment.SetCurveId(ecc_tedwards.BN254)
 	assignment.FromPrv0, assignment.FromPrv1 = prv0, prv1
 	assignment.NoteVer = usingNote.Version
@@ -165,13 +169,13 @@ func (w *Wallet) TransferProof(
 		return nil, nil, err
 	}
 
-	return &types.ZKTx{
+	return &ZKTx{
 		ProofBytes:           bufProof.Bytes(),
 		MerkleRoot:           rootHash,
 		Nullifier:            nullifier,
 		NewNoteCommitment:    newNoteC,
 		ChangeNoteCommitment: changeNoteC,
-	}, []*types.Note{newNote, changeNote}, nil
+	}, []*Note{newNote, changeNote}, nil
 }
 
 var gnarkLogger = zerolog.New(os.Stdout).Level(zerolog.TraceLevel).With().Timestamp().Logger()
