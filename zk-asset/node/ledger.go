@@ -6,6 +6,7 @@ import (
 	"github.com/consensys/gnark-crypto/accumulator/merkletree"
 	"github.com/consensys/gnark/backend/plonk"
 	"github.com/consensys/gnark/constraint"
+	"github.com/holiman/uint256"
 	"github.com/kysee/zkp/utils"
 	"github.com/kysee/zkp/zk-asset/types"
 )
@@ -29,6 +30,30 @@ var (
 func init() {
 	noteCommitmentsTree = merkletree.New(utils.MiMCHasher())
 	zkCircuit, ZKProvingKey, ZKVerifyingKey = types.CompileCircuit(noteMerkleDepth)
+
+	// initial minting...
+	for i := 0; i < 100; i++ {
+		balance := uint256.NewInt(100)
+		salt := types.RandBytes(32)
+
+		w := types.NewWallet()
+		note := &types.Note{
+			Version: 1,
+			PubKey:  w.PrivateKey.Public(),
+			Balance: balance,
+			Salt:    salt,
+		}
+		AddNoteCommitment(note.Commitment())
+
+		secretNote := &types.SecretNote{
+			Version: 1,
+			Balance: balance,
+			Salt:    salt,
+			Memo:    nil,
+		}
+		w.AddSecretNote(secretNote)
+		types.Wallets = append(types.Wallets, w)
+	}
 }
 
 func AddNoteCommitment(commitment types.NoteCommitment) int {
@@ -74,4 +99,23 @@ func VerifyNoteCommitmentProof(commitment types.NoteCommitment, root []byte, idx
 		return false
 	}
 	return merkletree.VerifyProof(utils.DefaultHasher(), vRoot, vProof, idx, vNumLeaves)
+}
+
+// for secret notes
+var secretNotes [][]byte // [ECDHE public key | ciphertext]
+
+func AddSecretNote(sn []byte) {
+	secretNotes = append(secretNotes, sn)
+}
+
+func GetSecretNote(idx int) []byte {
+	if idx < len(secretNotes) {
+		return secretNotes[idx]
+	}
+	return nil
+}
+
+func ParseSecretNote(sn []byte) ([]byte, []byte) {
+	// ECDHE public key, ciphertext
+	return sn[:32], sn[32:]
 }

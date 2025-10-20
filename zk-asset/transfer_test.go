@@ -17,43 +17,17 @@ import (
 )
 
 var (
-	css     constraint.ConstraintSystem
-	prKey   plonk.ProvingKey
-	wallets []*types.Wallet
+	css   constraint.ConstraintSystem
+	prKey plonk.ProvingKey
 )
 
 func init() {
 	css, prKey, _ = types.CompileCircuit(node.GetNoteCommitmentMerkleDepth())
-
-	for i := 0; i < 10; i++ {
-		wallets = append(wallets, types.NewWallet())
-	}
-
-	for i := 0; i < 5; i++ {
-		balance := uint256.NewInt(100)
-		salt := types.RandBytes(32)
-
-		note := &types.Note{
-			Version: 1,
-			PubKey:  wallets[i].PrivateKey.Public(),
-			Balance: balance,
-			Salt:    salt,
-		}
-		node.AddNoteCommitment(note.Commitment())
-
-		secretNote := &types.SecretNote{
-			Version: 1,
-			Balance: balance,
-			Salt:    salt,
-			Memo:    nil,
-		}
-		wallets[i].AddSecretNote(secretNote)
-	}
 }
 
 func TestTransfer(t *testing.T) {
-	sender := wallets[0]
-	receiver := wallets[5]
+	sender := types.Wallets[0]
+	receiver := types.Wallets[5]
 	amt, fee := uint256.NewInt(10), uint256.NewInt(0)
 
 	senderBalance0 := sender.GetBalance()
@@ -105,8 +79,8 @@ func Test_Nullifier(t *testing.T) {
 }
 
 func TestTransfer_WrongMerkleRootHash(t *testing.T) {
-	sender := wallets[0]
-	receiver := wallets[5]
+	sender := types.Wallets[0]
+	receiver := types.Wallets[5]
 	amt, fee := uint256.NewInt(10), uint256.NewInt(0)
 
 	useSecretNote := sender.GetSecretNote(0)
@@ -132,8 +106,8 @@ func TestTransfer_WrongMerkleRootHash(t *testing.T) {
 }
 
 func TestTransfer_NonExistNote(t *testing.T) {
-	sender := wallets[0]
-	receiver := wallets[5]
+	sender := types.Wallets[0]
+	receiver := types.Wallets[5]
 	amt, fee := uint256.NewInt(10), uint256.NewInt(0)
 
 	nonExistNote := &types.Note{
