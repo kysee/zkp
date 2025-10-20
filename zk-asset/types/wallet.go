@@ -95,6 +95,9 @@ func (w *Wallet) TransferProof(
 		Balance: amt,
 		Salt:    salt1,
 	}
+	newSecretNote := newNote.ToSecretNote()
+	encNewSecretNote, senderTmPubKey, err := EncryptSecretNote(newSecretNote, nil, toPubKey)
+
 	changeNote := &Note{
 		Version: 1,
 		PubKey:  usingNote.PubKey,
@@ -173,8 +176,9 @@ func (w *Wallet) TransferProof(
 		ProofBytes:           bufProof.Bytes(),
 		MerkleRoot:           rootHash,
 		Nullifier:            nullifier,
-		NewNoteCommitment:    newNoteC,
 		ChangeNoteCommitment: changeNoteC,
+		NewNoteCommitment:    newNoteC,
+		EncryptedSecretNote:  append(senderTmPubKey, encNewSecretNote...),
 	}, []*Note{newNote, changeNote}, nil
 }
 
