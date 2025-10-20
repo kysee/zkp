@@ -23,9 +23,10 @@ func NewPub() signature.PublicKey {
 	return new(jubjub.PublicKey)
 }
 
-// ECDHEComputeSharedSecret computes the ECDHE shared secret
+// ECDHSharedSecret computes the ECDHE shared secret
 // sharedSecret = privateKey * otherPublicKey
-func ECDHEComputeSharedSecret(privateKey *jubjub.PrivateKey, otherPublicKey *jubjub.PublicKey) ([]byte, error) {
+func ECDHSharedSecret(privateKey signature.Signer, _otherPublicKey signature.PublicKey) ([]byte, error) {
+	otherPublicKey := _otherPublicKey.(*jubjub.PublicKey)
 	// Verify the other public key is on the curve
 	if !otherPublicKey.A.IsOnCurve() {
 		return nil, errors.New("other public key is not on curve")

@@ -35,11 +35,11 @@ func TestECDHESharedSecret(t *testing.T) {
 	bobPub := &bobPriv.PublicKey
 
 	// Alice가 계산한 공유키: alicePriv * bobPub
-	sharedSecretAlice, err := ECDHEComputeSharedSecret(alicePriv, bobPub)
+	sharedSecretAlice, err := ECDHSharedSecret(alicePriv, bobPub)
 	require.NoError(t, err)
 
 	// Bob이 계산한 공유키: bobPriv * alicePub
-	sharedSecretBob, err := ECDHEComputeSharedSecret(bobPriv, alicePub)
+	sharedSecretBob, err := ECDHSharedSecret(bobPriv, alicePub)
 	require.NoError(t, err)
 
 	// 두 공유키가 같은지 확인
@@ -95,12 +95,12 @@ func TestECDHESharedSecret(t *testing.T) {
 //	// 각 참가자가 다른 참가자들과 공유키 생성
 //	for i := 0; i < len(participants); i++ {
 //		for j := i + 1; j < len(participants); j++ {
-//			shared1, err := ECDHEComputeSharedSecret(participants[i].priv, participants[j].pub)
+//			shared1, err := ECDHSharedSecret(participants[i].priv, participants[j].pub)
 //			if err != nil {
 //				t.Fatalf("Failed to compute shared secret: %v", err)
 //			}
 //
-//			shared2, err := ECDHEComputeSharedSecret(participants[j].priv, participants[i].pub)
+//			shared2, err := ECDHSharedSecret(participants[j].priv, participants[i].pub)
 //			if err != nil {
 //				t.Fatalf("Failed to compute shared secret: %v", err)
 //			}
@@ -136,7 +136,7 @@ func BenchmarkECDHESharedSecret(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, err := ECDHEComputeSharedSecret(alicePriv, bobPub)
+		_, err := ECDHSharedSecret(alicePriv, bobPub)
 		require.NoError(b, err)
 	}
 }

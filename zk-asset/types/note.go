@@ -10,6 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/holiman/uint256"
 	"github.com/kysee/zkp/utils"
+	"github.com/kysee/zkp/zk-asset/crypto"
 )
 
 type NoteCommitment []byte
@@ -154,4 +155,20 @@ func (sn *SecretNote) ToNoteOf(pubKey signature.PublicKey) *Note {
 		Balance: sn.Balance,
 		Salt:    sn.Salt,
 	}
+}
+
+func (sn *SecretNote) Encrypt(sharedSecret, ad []byte) ([]byte, error) {
+	m, err := rlp.EncodeToBytes(sn)
+	if err != nil {
+		return nil, err
+	}
+
+	saplingKDF, err := crypto.SaplingKDF(sharedSecret, 44)
+	if err != nil {
+		return nil, err
+	}
+	encKey := saplingKDF[:32]
+	nonce := saplingKDF[32:44]
+
+	return crypto.ChaCha20Poly1305_Encrypt(encKey, nonce, m, ad)
 }
