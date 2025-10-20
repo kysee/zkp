@@ -23,6 +23,24 @@ var (
 
 func init() {
 	css, prKey, _ = types.CompileCircuit(node.GetNoteCommitmentMerkleDepth())
+
+	for i := 0; i < len(types.Wallets); i++ {
+		owner := types.Wallets[i]
+
+		for j := 0; ; j++ {
+			sn := node.GetEncryptedSecretNote(j)
+			if sn == nil {
+				break
+			}
+
+			bzSenderPubKey, encSecretNote := sn[0:32], sn[32:]
+			secretNote, err := types.DecryptSecretNote(encSecretNote, nil, owner.PrivateKey, bzSenderPubKey)
+			if err == nil {
+				// success
+				owner.AddSecretNote(secretNote)
+			}
+		}
+	}
 }
 
 func TestTransfer(t *testing.T) {
