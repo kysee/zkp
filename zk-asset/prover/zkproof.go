@@ -117,6 +117,6 @@ func CreateZKProof(
 		MerkleRoot:         rootHash,
 		Nullifier:          nullifier,
 		NewNoteCommitments: []types.NoteCommitment{newNoteC, changeNoteC},
-		NewSecretNotes:     [][]byte{newSecretNote, newChangeSecretNote},
+		NewSecretNotes:     []types.SecretNote{newSecretNote, newChangeSecretNote},
 	}, nil
 }

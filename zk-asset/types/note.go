@@ -15,6 +15,7 @@ import (
 
 type NoteCommitment []byte
 type NoteNullifier []byte
+type SecretNote []byte
 
 type Note struct {
 	Version byte
@@ -157,7 +158,7 @@ func (sn *SharedNote) ToNoteOf(pubKey signature.PublicKey) *Note {
 	}
 }
 
-func (sn *SharedNote) Encrypt(sharedKey, ad []byte) ([]byte, error) {
+func (sn *SharedNote) Encrypt(sharedKey, ad []byte) (SecretNote, error) {
 	saplingKDF, err := crypto.SaplingKDF(sharedKey, 44)
 	if err != nil {
 		return nil, err
@@ -181,7 +182,7 @@ func (sn *SharedNote) Decrypt(sharedKey, ciphertext, ad []byte) error {
 }
 
 // EncryptSharedNote encrypts a SharedNote and returns the ciphertext and temporarily public key
-func EncryptSharedNote(sn *SharedNote, ad []byte, receiverPubKey signature.PublicKey) ([]byte, error) {
+func EncryptSharedNote(shared *SharedNote, ad []byte, receiverPubKey signature.PublicKey) (SecretNote, error) {
 	// Encrypt the SharedNote
 	tmpKey, err := crypto.NewKey()
 	if err != nil {
@@ -192,14 +193,14 @@ func EncryptSharedNote(sn *SharedNote, ad []byte, receiverPubKey signature.Publi
 		return nil, err
 	}
 
-	ciphertext, err := sn.Encrypt(sharedSecret, ad)
+	ciphertext, err := shared.Encrypt(sharedSecret, ad)
 	if err != nil {
 		return nil, err
 	}
 	return append(tmpKey.Public().Bytes(), ciphertext...), nil
 }
 
-func DecryptSharedNote(secretNote []byte, ad []byte, myPrivKey signature.Signer) (*SharedNote, error) {
+func DecryptSharedNote(secretNote SecretNote, ad []byte, myPrivKey signature.Signer) (*SharedNote, error) {
 	bzSenderPubKey, ciphertext := secretNote[:32], secretNote[32:]
 	tmpPubKey := crypto.NewPub()
 	tmpPubKey.SetBytes(bzSenderPubKey)
