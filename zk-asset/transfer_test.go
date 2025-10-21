@@ -40,7 +40,8 @@ func TestTransfer(t *testing.T) {
 	//fmt.Printf("Merkle Info: numLeaves=%d, idx=%d, depth=%d, proofPath.len=%d\n", numLeaves, idx, depth, len(proofPath))
 
 	// generate the ZKTx including zk-proof
-	zkTx, _, err := sender.TransferProof(
+	zkTx, err := prover.CreateZKProof(
+		sender.PrivateKey,
 		receiver.Address, amt, fee,
 		useNote,
 		rootHash, proofPath, depth, idx,
@@ -54,7 +55,7 @@ func TestTransfer(t *testing.T) {
 	fmt.Printf("changeNote : (%4dB) %x\n", len(zkTx.NewNoteCommitments[1]), zkTx.NewNoteCommitments[1])
 
 	// send the ZKTx to the verifier
-	err = verifier.SendZKTransaction(zkTx)
+	err = verifier.VerifyZKProof(zkTx)
 	require.NoError(t, err)
 
 	fmt.Println("---")
@@ -89,7 +90,8 @@ func Test_WrongNewSharedNote(t *testing.T) {
 	//fmt.Printf("Merkle Info: numLeaves=%d, idx=%d, depth=%d, proofPath.len=%d\n", numLeaves, idx, depth, len(proofPath))
 
 	// generate the ZKTx including zk-proof
-	zkTx, _, err := sender.TransferProof(
+	zkTx, err := prover.CreateZKProof(
+		sender.PrivateKey,
 		receiver.Address, amt, fee,
 		useNote,
 		rootHash, proofPath, depth, idx,
@@ -109,7 +111,7 @@ func Test_WrongNewSharedNote(t *testing.T) {
 	require.NoError(t, err)
 
 	// send the ZKTx to the verifier
-	err = verifier.SendZKTransaction(zkTx)
+	err = verifier.VerifyZKProof(zkTx)
 	require.NoError(t, err)
 
 	fmt.Println("---")

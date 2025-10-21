@@ -30,7 +30,7 @@ type ZKCircuit struct {
 
 	NoteVer frontend.Variable
 
-	// exist note
+	// used note
 	FromPub        std_eddsa.PublicKey
 	Balance        frontend.Variable
 	Salt0          frontend.Variable
@@ -38,14 +38,14 @@ type ZKCircuit struct {
 	NoteIdx        frontend.Variable
 	NoteMerklePath []frontend.Variable
 	NoteMerkleRoot frontend.Variable `gnark:",public"`
+	Nullifier      frontend.Variable `gnark:",public"`
 
-	// new note and change note
+	// new notes (new note and change note)
 	Amount frontend.Variable
 	Fee    frontend.Variable
 	ToPub  std_eddsa.PublicKey
 	Salt1  frontend.Variable
 
-	Nullifier            frontend.Variable `gnark:",public"`
 	NewNoteCommitment    frontend.Variable `gnark:",public"`
 	ChangeNoteCommitment frontend.Variable `gnark:",public"`
 }
