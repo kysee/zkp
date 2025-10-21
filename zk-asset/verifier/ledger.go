@@ -35,6 +35,7 @@ func init() {
 func InitMint(addr string, amount *uint256.Int) {
 	// initial minting...
 
+	zktx := types.NewZKTx()
 	salt := types.RandBytes(32)
 
 	pubKey := types.Addr2Pub(addr)
@@ -44,7 +45,8 @@ func InitMint(addr string, amount *uint256.Int) {
 		Balance: amount,
 		Salt:    salt,
 	}
-	addNoteCommitment(note.Commitment())
+	zktx.NewNoteCommitments[0] = note.Commitment()
+	addNoteCommitment(zktx.NewNoteCommitments[0])
 
 	sharedNote := &types.SharedNote{
 		Version: 1,
@@ -60,7 +62,10 @@ func InitMint(addr string, amount *uint256.Int) {
 	if err != nil {
 		panic(err)
 	}
-	addSecretNote(secretNote)
+	zktx.NewSecretNotes[0] = secretNote
+	addSecretNote(zktx.NewSecretNotes[0])
+
+	addZKTx(zktx)
 }
 
 func addNoteCommitment(commitment types.NoteCommitment) int {
@@ -118,6 +123,20 @@ func addSecretNote(enc []byte) {
 func GetSecretNote(idx int) []byte {
 	if idx < len(ledgerSecretNotes) {
 		return ledgerSecretNotes[idx]
+	}
+	return nil
+}
+
+// for ZKTx
+var ledgerZKTx []*types.ZKTx
+
+func addZKTx(zkTx *types.ZKTx) {
+	ledgerZKTx = append(ledgerZKTx, zkTx)
+}
+
+func GetZKTx(idx int) *types.ZKTx {
+	if idx < len(ledgerZKTx) {
+		return ledgerZKTx[idx]
 	}
 	return nil
 }

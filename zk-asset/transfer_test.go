@@ -50,8 +50,8 @@ func TestTransfer(t *testing.T) {
 	fmt.Printf("proof      : (%4dB) %x\n", len(zkTx.ProofBytes), zkTx.ProofBytes)
 	fmt.Printf("merkle root: (%4dB) %x\n", len(zkTx.MerkleRoot), zkTx.MerkleRoot)
 	fmt.Printf("nullifier  : (%4dB) %x\n", len(zkTx.Nullifier), zkTx.Nullifier)
-	fmt.Printf("newNote    : (%4dB) %x\n", len(zkTx.NewNoteCommitment), zkTx.NewNoteCommitment)
-	fmt.Printf("changeNote : (%4dB) %x\n", len(zkTx.ChangeNoteCommitment), zkTx.ChangeNoteCommitment)
+	fmt.Printf("newNote    : (%4dB) %x\n", len(zkTx.NewNoteCommitments[0]), zkTx.NewNoteCommitments[0])
+	fmt.Printf("changeNote : (%4dB) %x\n", len(zkTx.NewNoteCommitments[1]), zkTx.NewNoteCommitments[1])
 
 	// send the ZKTx to the verifier
 	err = verifier.SendZKTransaction(zkTx)
@@ -59,8 +59,8 @@ func TestTransfer(t *testing.T) {
 
 	fmt.Println("---")
 
-	sender.SyncSharedNotes()
-	receiver.SyncSharedNotes()
+	_ = sender.SyncSharedNotes()
+	_ = receiver.SyncSharedNotes()
 
 	senderBalance1 := sender.GetBalance()
 	recieverBalance1 := receiver.GetBalance()
@@ -71,6 +71,57 @@ func TestTransfer(t *testing.T) {
 	fmt.Println("receiver balance: ", recieverBalance0.Dec(), "-->", recieverBalance1.Dec())
 }
 
-func Test_WrongSharedNote(t *testing.T) {
+func Test_WrongNewSharedNote(t *testing.T) {
+	sender := prover.Wallets[1]
+	receiver := prover.Wallets[6]
+	amt, fee := uint256.NewInt(10), uint256.NewInt(0)
 
+	senderBalance0 := sender.GetBalance()
+	recieverBalance0 := receiver.GetBalance()
+
+	useSharedNote := sender.GetSharedNote(0)
+	useNote := useSharedNote.ToNoteOf(sender.PrivateKey.Public())
+	useNoteCommitment := useNote.Commitment()
+
+	// get merkle proof info.
+	rootHash, proofPath, depth, idx, _, err := verifier.GetNoteCommitmentMerkle(useNoteCommitment)
+	require.NoError(t, err)
+	//fmt.Printf("Merkle Info: numLeaves=%d, idx=%d, depth=%d, proofPath.len=%d\n", numLeaves, idx, depth, len(proofPath))
+
+	// generate the ZKTx including zk-proof
+	zkTx, _, err := sender.TransferProof(
+		receiver.Address, amt, fee,
+		useNote,
+		rootHash, proofPath, depth, idx,
+		prKey, css,
+	)
+	require.NoError(t, err)
+
+	//
+	// modify the zkTx.NewSecretNote
+	fakedNewSharedNote := &types.SharedNote{
+		Version: 1,
+		Balance: new(uint256.Int).Add(amt, amt),
+		Salt:    types.RandBytes(32),
+		Memo:    nil,
+	}
+	zkTx.NewSecretNotes[0], err = types.EncryptSharedNote(fakedNewSharedNote, nil, receiver.PrivateKey.Public())
+	require.NoError(t, err)
+
+	// send the ZKTx to the verifier
+	err = verifier.SendZKTransaction(zkTx)
+	require.NoError(t, err)
+
+	fmt.Println("---")
+
+	_ = sender.SyncSharedNotes()
+	_ = receiver.SyncSharedNotes()
+
+	senderBalance1 := sender.GetBalance()
+	recieverBalance1 := receiver.GetBalance()
+	require.EqualValues(t, new(uint256.Int).Sub(senderBalance0, new(uint256.Int).Add(amt, fee)), senderBalance1)
+	require.EqualValues(t, recieverBalance0, recieverBalance1)
+
+	fmt.Println("sender balance  : ", senderBalance0.Dec(), "-->", senderBalance1.Dec())
+	fmt.Println("receiver balance: ", recieverBalance0.Dec(), "-->", recieverBalance1.Dec())
 }

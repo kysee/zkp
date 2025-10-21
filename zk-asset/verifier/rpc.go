@@ -29,9 +29,9 @@ func SendZKTransaction(zktx *types.ZKTx) error {
 	// when zktx was made, the merkle root hash may be different from the latest one (`noteCommitmentsRoot`).
 	tmpAssignment := types.ZKCircuit{
 		NoteMerkleRoot:       noteCommitmentsRoot, // don't use the zktx.MerkleRoot; it may be faked.
-		Nullifier:            zktx.Nullifier,
-		NewNoteCommitment:    zktx.NewNoteCommitment,
-		ChangeNoteCommitment: zktx.ChangeNoteCommitment,
+		Nullifier:            []byte(zktx.Nullifier),
+		NewNoteCommitment:    []byte(zktx.NewNoteCommitments[0]),
+		ChangeNoteCommitment: []byte(zktx.NewNoteCommitments[1]),
 	}
 	pubWtn, err := frontend.NewWitness(&tmpAssignment, ecc.BN254.ScalarField(), frontend.PublicOnly())
 	if err != nil {
@@ -43,10 +43,11 @@ func SendZKTransaction(zktx *types.ZKTx) error {
 	}
 
 	addNoteNullifier(zktx.Nullifier)
-	addNoteCommitment(zktx.NewNoteCommitment)
-	addNoteCommitment(zktx.ChangeNoteCommitment)
-	addSecretNote(zktx.NewSecretNote)
-	addSecretNote(zktx.NewChangeSecretNote)
+	addNoteCommitment(zktx.NewNoteCommitments[0])
+	addNoteCommitment(zktx.NewNoteCommitments[1])
+	addSecretNote(zktx.NewSecretNotes[0])
+	addSecretNote(zktx.NewSecretNotes[1])
+	addZKTx(zktx)
 	return nil
 }
 

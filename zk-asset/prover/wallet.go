@@ -40,7 +40,7 @@ func init() {
 	}
 
 	for _, w := range Wallets {
-		w.SyncSharedNotes()
+		_ = w.SyncSharedNotes()
 		b := w.GetBalance()
 		fmt.Printf("prover=%s, balance=%s\n", w.Address, b.Dec())
 	}
@@ -69,32 +69,47 @@ func (w *Wallet) GetSharedNotesCount() int {
 	return len(w.sharedNotes)
 }
 
-func (w *Wallet) SyncSharedNotes() {
+func (w *Wallet) SyncSharedNotes() int {
 	w.ClearSharedNotes()
 
 	// find my shared notes
 	for i := 0; ; i++ {
-		sn := verifier.GetSecretNote(i)
-		if sn == nil {
+		tx := verifier.GetZKTx(i)
+		if tx == nil {
 			break
 		}
 
-		sharedNote, err := types.DecryptSharedNote(sn, nil, w.PrivateKey)
-		if err != nil {
-			continue
+		for i, sn := range tx.NewSecretNotes {
+			if len(sn) == 0 {
+				continue
+			}
+			_sharedNote, err := types.DecryptSharedNote(sn, nil, w.PrivateKey)
+			if err != nil {
+				continue
+			}
+			_note := _sharedNote.ToNoteOf(w.PrivateKey.Public())
+
+			// 1. _ncmt == tx.NewNoteCommitments[i]
+			_ncmt := _note.Commitment()
+			if !bytes.Equal(_ncmt, tx.NewNoteCommitments[i]) {
+				fmt.Printf("wrong secret note: not same as tx note commitment. expected(%x), got(%x)\n", tx.NewNoteCommitments[i], _ncmt)
+				continue
+			}
+
+			// 2. check the note is used or not (the nullifier exists or not)
+			nullifier := _note.Nullifier(w.getPrvScalar())
+			if verifier.FindNoteNullifier(nullifier) != nil {
+				// already spent
+				fmt.Printf("note already spent: %x\n", nullifier)
+				continue
+			}
+
+			// success
+			w.AddSharedNote(_sharedNote)
 		}
 
-		note := sharedNote.ToNoteOf(w.PrivateKey.Public())
-		nullifier := note.Nullifier(w.getPrvScalar())
-		if verifier.FindNoteNullifier(nullifier) != nil {
-			// already spent
-			fmt.Printf("note already spent: %x\n", nullifier)
-			continue
-		}
-
-		// success
-		w.AddSharedNote(sharedNote)
 	}
+	return w.GetSharedNotesCount()
 }
 
 func (w *Wallet) ClearSharedNotes() {
@@ -209,13 +224,11 @@ func (w *Wallet) TransferProof(
 	}
 
 	return &types.ZKTx{
-		ProofBytes:           bufProof.Bytes(),
-		MerkleRoot:           rootHash,
-		Nullifier:            nullifier,
-		ChangeNoteCommitment: changeNoteC,
-		NewNoteCommitment:    newNoteC,
-		NewSecretNote:        newSecretNote,
-		NewChangeSecretNote:  newChangeSecretNote,
+		ProofBytes:         bufProof.Bytes(),
+		MerkleRoot:         rootHash,
+		Nullifier:          nullifier,
+		NewNoteCommitments: []types.NoteCommitment{newNoteC, changeNoteC},
+		NewSecretNotes:     [][]byte{newSecretNote, newChangeSecretNote},
 	}, []*types.Note{newNote, changeNote}, nil
 }
 
