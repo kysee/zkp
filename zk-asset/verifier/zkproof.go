@@ -14,7 +14,7 @@ func VerifyZKTx(zktx *types.ZKTx) error {
 
 	if err := VerifyZKProof(
 		zktx.ProofBytes,
-		noteCommitmentsRoot,
+		merkleNoteCommitments.Root(),
 		zktx.Nullifier,
 		zktx.NewNoteCommitments); err != nil {
 		return err
@@ -43,7 +43,7 @@ func VerifyZKProof(bzProof []byte, merkleRootHash, nullifier []byte, newCommitme
 
 	// todo: Verify zktx.MerkleRoot
 	// the below is a temporary solution.
-	// when zktx was made, the merkle root hash may be different from the latest one (`noteCommitmentsRoot`).
+	// when zktx was made, the merkle root hash may be different from the latest one (`merkleNoteCommitmentsRoot`).
 	tmpAssignment := types.ZKCircuit{
 		NoteMerkleRoot:       merkleRootHash, // don't use the zktx.MerkleRoot; it may be faked.
 		Nullifier:            nullifier,

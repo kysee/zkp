@@ -21,14 +21,13 @@ var (
 	ZKProvingKey   plonk.ProvingKey
 	ZKVerifyingKey plonk.VerifyingKey
 
-	noteCommitmentsTree *merkletree.Tree
-	noteCommitmentsRoot []byte
-	noteCommitments     []types.NoteCommitment
-	noteNullifiers      []types.NoteNullifier
+	merkleNoteCommitments *merkletree.Tree
+	ledgerNoteCommitments []types.NoteCommitment
+	ledgerNoteNullifiers  []types.NoteNullifier
 )
 
 func init() {
-	noteCommitmentsTree = merkletree.New(utils.MiMCHasher())
+	merkleNoteCommitments = merkletree.New(utils.MiMCHasher())
 	zkCircuit, ZKProvingKey, ZKVerifyingKey = types.CompileCircuit(noteMerkleDepth)
 }
 
@@ -70,19 +69,18 @@ func InitMint(addr string, amount *uint256.Int) {
 
 func addNoteCommitment(commitment types.NoteCommitment) int {
 	//fmt.Printf("addNoteCommitment: %x\n", commitment)
-	noteCommitments = append(noteCommitments, commitment)
-	noteCommitmentsTree.Push(commitment)
-	noteCommitmentsRoot = noteCommitmentsTree.Root()
+	ledgerNoteCommitments = append(ledgerNoteCommitments, commitment)
+	merkleNoteCommitments.Push(commitment)
 
-	return len(noteCommitments) - 1
+	return len(ledgerNoteCommitments) - 1
 }
 
 func addNoteNullifier(nullifier types.NoteNullifier) {
-	noteNullifiers = append(noteNullifiers, nullifier)
+	ledgerNoteNullifiers = append(ledgerNoteNullifiers, nullifier)
 }
 
 func FindNoteNullifier(nullifier types.NoteNullifier) types.NoteNullifier {
-	for _, n := range noteNullifiers {
+	for _, n := range ledgerNoteNullifiers {
 		if bytes.Equal(n, nullifier) {
 			ret := make([]byte, len(n))
 			copy(ret, n)
@@ -95,7 +93,7 @@ func FindNoteNullifier(nullifier types.NoteNullifier) types.NoteNullifier {
 func VerifyNoteCommitmentProof(commitment types.NoteCommitment, root []byte, idx uint64) bool {
 	// Build the proof from scratch for verification
 	var buf bytes.Buffer
-	for _, c := range noteCommitments {
+	for _, c := range ledgerNoteCommitments {
 		buf.Write(c)
 	}
 	vRoot, vProof, vNumLeaves, err := merkletree.BuildReaderProof(

@@ -14,15 +14,15 @@ import (
 //
 
 func GetNoteCommitment(idx int) types.NoteCommitment {
-	ret := make([]byte, len(noteCommitments[idx]))
-	copy(ret, noteCommitments[idx])
+	ret := make([]byte, len(ledgerNoteCommitments[idx]))
+	copy(ret, ledgerNoteCommitments[idx])
 	return ret
 }
 
 func GetNoteCommitmentMerkle(commitment types.NoteCommitment) (root []byte, proofSet [][]byte, depth int, idx, numLeaves uint64, err error) {
 	var buf bytes.Buffer
 	found := false
-	for i, c := range noteCommitments {
+	for i, c := range ledgerNoteCommitments {
 		if bytes.Equal(c, commitment) {
 			idx = uint64(i)
 			found = true
@@ -44,12 +44,6 @@ func GetNoteCommitmentMerkle(commitment types.NoteCommitment) (root []byte, proo
 	}
 	depth = noteMerkleDepth
 	return
-}
-
-func GetNoteCommitmentsRoot() []byte {
-	ret := make([]byte, len(noteCommitmentsRoot))
-	copy(ret, noteCommitmentsRoot)
-	return ret
 }
 
 func GetNoteCommitmentMerkleDepth() int {
