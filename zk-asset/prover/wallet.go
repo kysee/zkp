@@ -1,4 +1,4 @@
-package wallet
+package prover
 
 import (
 	"bytes"
@@ -16,8 +16,8 @@ import (
 	"github.com/consensys/gnark/frontend"
 	"github.com/holiman/uint256"
 	"github.com/kysee/zkp/zk-asset/crypto"
-	"github.com/kysee/zkp/zk-asset/node"
 	"github.com/kysee/zkp/zk-asset/types"
+	"github.com/kysee/zkp/zk-asset/verifier"
 	"github.com/rs/zerolog"
 )
 
@@ -36,13 +36,13 @@ func init() {
 		w := NewWallet()
 		Wallets = append(Wallets, w)
 
-		node.InitMint(w.Address, uint256.NewInt(100))
+		verifier.InitMint(w.Address, uint256.NewInt(100))
 	}
 
 	for _, w := range Wallets {
 		w.SyncSharedNotes()
 		b := w.GetBalance()
-		fmt.Printf("wallet=%s, balance=%s\n", w.Address, b.Dec())
+		fmt.Printf("prover=%s, balance=%s\n", w.Address, b.Dec())
 	}
 }
 
@@ -74,7 +74,7 @@ func (w *Wallet) SyncSharedNotes() {
 
 	// find my shared notes
 	for i := 0; ; i++ {
-		sn := node.GetSecretNote(i)
+		sn := verifier.GetSecretNote(i)
 		if sn == nil {
 			break
 		}
@@ -86,7 +86,7 @@ func (w *Wallet) SyncSharedNotes() {
 
 		note := sharedNote.ToNoteOf(w.PrivateKey.Public())
 		nullifier := note.Nullifier(w.getPrvScalar())
-		if node.FindNoteNullifier(nullifier) != nil {
+		if verifier.FindNoteNullifier(nullifier) != nil {
 			// already spent
 			fmt.Printf("note already spent: %x\n", nullifier)
 			continue
@@ -142,7 +142,7 @@ func (w *Wallet) TransferProof(
 	}
 	newChangeSecretNote, err := types.EncryptSharedNote(changeNote.ToSharedNote(), nil, w.PrivateKey.Public())
 	//
-	// get merkle path info from remote node
+	// get merkle path info from remote verifier
 	noteCommitment := usingNote.Commitment()
 
 	//fmt.Printf("noteCommitment=%s\n", new(uint256.Int).SetBytes(noteCommitment).Dec())

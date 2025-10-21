@@ -9,15 +9,15 @@ import (
 	"github.com/consensys/gnark-crypto/accumulator/merkletree"
 	"github.com/holiman/uint256"
 	"github.com/kysee/zkp/utils"
-	"github.com/kysee/zkp/zk-asset/node"
+	"github.com/kysee/zkp/zk-asset/prover"
 	"github.com/kysee/zkp/zk-asset/types"
-	"github.com/kysee/zkp/zk-asset/wallet"
+	"github.com/kysee/zkp/zk-asset/verifier"
 	"github.com/stretchr/testify/require"
 )
 
 func TestFakeMerkle_WrongRootHash(t *testing.T) {
-	sender := wallet.Wallets[0]
-	receiver := wallet.Wallets[5]
+	sender := prover.Wallets[0]
+	receiver := prover.Wallets[5]
 	amt, fee := uint256.NewInt(10), uint256.NewInt(0)
 
 	useSharedNote := sender.GetSharedNote(0)
@@ -25,7 +25,7 @@ func TestFakeMerkle_WrongRootHash(t *testing.T) {
 	useNoteCommitment := useNote.Commitment()
 
 	// get merkle proof info.
-	rootHash, proofPath, depth, idx, _, err := node.GetNoteCommitmentMerkle(useNoteCommitment)
+	rootHash, proofPath, depth, idx, _, err := verifier.GetNoteCommitmentMerkle(useNoteCommitment)
 	require.NoError(t, err)
 	//fmt.Printf("Merkle Info: numLeaves=%d, idx=%d, depth=%d, proofPath.len=%d\n", numLeaves, idx, depth, len(proofPath))
 
@@ -43,8 +43,8 @@ func TestFakeMerkle_WrongRootHash(t *testing.T) {
 }
 
 func TestFakeMerkle_NonExistNote(t *testing.T) {
-	sender := wallet.Wallets[0]
-	receiver := wallet.Wallets[5]
+	sender := prover.Wallets[0]
+	receiver := prover.Wallets[5]
 	amt, fee := uint256.NewInt(10), uint256.NewInt(0)
 
 	nonExistNote := &types.Note{
@@ -56,7 +56,7 @@ func TestFakeMerkle_NonExistNote(t *testing.T) {
 
 	// get merkle proof info for the existing note.
 	existNote := sender.GetSharedNote(0).ToNoteOf(sender.PrivateKey.Public())
-	rootHash, proofPath, depth, idx, numLeaves, err := node.GetNoteCommitmentMerkle(existNote.Commitment())
+	rootHash, proofPath, depth, idx, numLeaves, err := verifier.GetNoteCommitmentMerkle(existNote.Commitment())
 	require.NoError(t, err)
 	fmt.Printf("Merkle Info: numLeaves=%d, idx=%d, depth=%d, proofPath.len=%d\n", numLeaves, idx, depth, len(proofPath))
 
@@ -85,10 +85,10 @@ func TestFakeMerkle_NonExistNote(t *testing.T) {
 var fakeMerkleTree = merkletree.New(utils.MiMCHasher())
 var fakeCommitmentsRoot []byte
 var fakeCommitments []types.NoteCommitment
-var fakeMerkleDepth = node.GetNoteCommitmentMerkleDepth()
+var fakeMerkleDepth = verifier.GetNoteCommitmentMerkleDepth()
 
 func TestFakeMerkle_UseFakeMerkle(t *testing.T) {
-	faker := wallet.NewWallet()
+	faker := prover.NewWallet()
 
 	for i := 0; i < 5; i++ {
 		balance := uint256.NewInt(1_000_000_000)
@@ -114,7 +114,7 @@ func TestFakeMerkle_UseFakeMerkle(t *testing.T) {
 		faker.AddSharedNote(sharedNote)
 	}
 
-	receiver := wallet.NewWallet()
+	receiver := prover.NewWallet()
 	amt, fee := uint256.NewInt(10), uint256.NewInt(0)
 
 	useSharedNote := faker.GetSharedNote(0)
@@ -136,8 +136,8 @@ func TestFakeMerkle_UseFakeMerkle(t *testing.T) {
 	// the merkle tree is fully faked.
 	// so, the proof generation by TransferProof is succeeded.
 	require.NoError(t, err)
-	// expected error: the zkTx.MerkleRoot is different from the merkle root hash of the node.
-	err = node.SendZKTransaction(zkTx)
+	// expected error: the zkTx.MerkleRoot is different from the merkle root hash of the verifier.
+	err = verifier.SendZKTransaction(zkTx)
 	require.Error(t, err)
 }
 

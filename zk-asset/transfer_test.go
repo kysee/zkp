@@ -7,9 +7,9 @@ import (
 	"github.com/consensys/gnark/backend/plonk"
 	"github.com/consensys/gnark/constraint"
 	"github.com/holiman/uint256"
-	"github.com/kysee/zkp/zk-asset/node"
+	"github.com/kysee/zkp/zk-asset/prover"
 	"github.com/kysee/zkp/zk-asset/types"
-	"github.com/kysee/zkp/zk-asset/wallet"
+	"github.com/kysee/zkp/zk-asset/verifier"
 	"github.com/stretchr/testify/require"
 )
 
@@ -19,12 +19,12 @@ var (
 )
 
 func init() {
-	css, prKey, _ = types.CompileCircuit(node.GetNoteCommitmentMerkleDepth())
+	css, prKey, _ = types.CompileCircuit(verifier.GetNoteCommitmentMerkleDepth())
 }
 
 func TestTransfer(t *testing.T) {
-	sender := wallet.Wallets[0]
-	receiver := wallet.Wallets[5]
+	sender := prover.Wallets[0]
+	receiver := prover.Wallets[5]
 	amt, fee := uint256.NewInt(10), uint256.NewInt(0)
 
 	senderBalance0 := sender.GetBalance()
@@ -35,7 +35,7 @@ func TestTransfer(t *testing.T) {
 	useNoteCommitment := useNote.Commitment()
 
 	// get merkle proof info.
-	rootHash, proofPath, depth, idx, _, err := node.GetNoteCommitmentMerkle(useNoteCommitment)
+	rootHash, proofPath, depth, idx, _, err := verifier.GetNoteCommitmentMerkle(useNoteCommitment)
 	require.NoError(t, err)
 	//fmt.Printf("Merkle Info: numLeaves=%d, idx=%d, depth=%d, proofPath.len=%d\n", numLeaves, idx, depth, len(proofPath))
 
@@ -53,8 +53,8 @@ func TestTransfer(t *testing.T) {
 	fmt.Printf("newNote    : (%4dB) %x\n", len(zkTx.NewNoteCommitment), zkTx.NewNoteCommitment)
 	fmt.Printf("changeNote : (%4dB) %x\n", len(zkTx.ChangeNoteCommitment), zkTx.ChangeNoteCommitment)
 
-	// send the ZKTx to the node
-	err = node.SendZKTransaction(zkTx)
+	// send the ZKTx to the verifier
+	err = verifier.SendZKTransaction(zkTx)
 	require.NoError(t, err)
 
 	fmt.Println("---")
