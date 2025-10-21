@@ -6,5 +6,6 @@ type ZKTx struct {
 	Nullifier            []byte
 	ChangeNoteCommitment []byte
 	NewNoteCommitment    []byte
-	SecretNote           []byte
+	NewSecretNote        []byte
+	NewChangeSecretNote  []byte
 }

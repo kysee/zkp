@@ -30,43 +30,41 @@ var (
 func init() {
 	noteCommitmentsTree = merkletree.New(utils.MiMCHasher())
 	zkCircuit, ZKProvingKey, ZKVerifyingKey = types.CompileCircuit(noteMerkleDepth)
-
-	// initial minting...
-	for i := 0; i < 100; i++ {
-		balance := uint256.NewInt(100)
-		salt := types.RandBytes(32)
-
-		w := types.NewWallet()
-		types.Wallets = append(types.Wallets, w)
-
-		note := &types.Note{
-			Version: 1,
-			PubKey:  w.PrivateKey.Public(),
-			Balance: balance,
-			Salt:    salt,
-		}
-		AddNoteCommitment(note.Commitment())
-
-		sharedNote := &types.SharedNote{
-			Version: 1,
-			Balance: balance,
-			Salt:    salt,
-			Memo:    nil,
-		}
-
-		//
-		// Encrypt the SharedNote
-
-		secretNote, err := types.EncryptSharedNote(sharedNote, nil, w.PrivateKey.Public())
-		if err != nil {
-			panic(err)
-		}
-		AddSecretNote(secretNote)
-	}
 }
 
-func AddNoteCommitment(commitment types.NoteCommitment) int {
-	//fmt.Printf("AddNoteCommitment: %x\n", commitment)
+func InitMint(addr string, amount *uint256.Int) {
+	// initial minting...
+
+	salt := types.RandBytes(32)
+
+	pubKey := types.Addr2Pub(addr)
+	note := &types.Note{
+		Version: 1,
+		PubKey:  pubKey,
+		Balance: amount,
+		Salt:    salt,
+	}
+	addNoteCommitment(note.Commitment())
+
+	sharedNote := &types.SharedNote{
+		Version: 1,
+		Balance: amount,
+		Salt:    salt,
+		Memo:    nil,
+	}
+
+	//
+	// Encrypt the SharedNote
+
+	secretNote, err := types.EncryptSharedNote(sharedNote, nil, pubKey)
+	if err != nil {
+		panic(err)
+	}
+	addSecretNote(secretNote)
+}
+
+func addNoteCommitment(commitment types.NoteCommitment) int {
+	//fmt.Printf("addNoteCommitment: %x\n", commitment)
 	noteCommitments = append(noteCommitments, commitment)
 	noteCommitmentsTree.Push(commitment)
 	noteCommitmentsRoot = noteCommitmentsTree.Root()
@@ -74,7 +72,7 @@ func AddNoteCommitment(commitment types.NoteCommitment) int {
 	return len(noteCommitments) - 1
 }
 
-func AddNoteNullifier(nullifier types.NoteNullifier) {
+func addNoteNullifier(nullifier types.NoteNullifier) {
 	noteNullifiers = append(noteNullifiers, nullifier)
 }
 
@@ -113,7 +111,7 @@ func VerifyNoteCommitmentProof(commitment types.NoteCommitment, root []byte, idx
 // for secret notes
 var ledgerSecretNotes [][]byte // [ECDHE public key | ciphertext]
 
-func AddSecretNote(enc []byte) {
+func addSecretNote(enc []byte) {
 	ledgerSecretNotes = append(ledgerSecretNotes, enc)
 }
 

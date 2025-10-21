@@ -42,9 +42,11 @@ func SendZKTransaction(zktx *types.ZKTx) error {
 		return err
 	}
 
-	AddNoteNullifier(zktx.Nullifier)
-	AddNoteCommitment(zktx.NewNoteCommitment)
-	AddNoteCommitment(zktx.ChangeNoteCommitment)
+	addNoteNullifier(zktx.Nullifier)
+	addNoteCommitment(zktx.NewNoteCommitment)
+	addNoteCommitment(zktx.ChangeNoteCommitment)
+	addSecretNote(zktx.NewSecretNote)
+	addSecretNote(zktx.NewChangeSecretNote)
 	return nil
 }
 

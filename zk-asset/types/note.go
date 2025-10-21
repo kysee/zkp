@@ -201,9 +201,9 @@ func EncryptSharedNote(sn *SharedNote, ad []byte, receiverPubKey signature.Publi
 
 func DecryptSharedNote(secretNote []byte, ad []byte, myPrivKey signature.Signer) (*SharedNote, error) {
 	bzSenderPubKey, ciphertext := secretNote[:32], secretNote[32:]
-	pubKey := crypto.NewPub()
-	pubKey.SetBytes(bzSenderPubKey)
-	sharedSecret, err := crypto.ECDHSharedSecret(myPrivKey, pubKey)
+	tmpPubKey := crypto.NewPub()
+	tmpPubKey.SetBytes(bzSenderPubKey)
+	sharedSecret, err := crypto.ECDHSharedSecret(myPrivKey, tmpPubKey)
 
 	sn := &SharedNote{}
 	err = sn.Decrypt(sharedSecret, ciphertext, ad)
