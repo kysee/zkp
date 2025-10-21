@@ -40,7 +40,7 @@ func TestTransfer(t *testing.T) {
 	//fmt.Printf("Merkle Info: numLeaves=%d, idx=%d, depth=%d, proofPath.len=%d\n", numLeaves, idx, depth, len(proofPath))
 
 	// generate the ZKTx including zk-proof
-	zkTx, err := prover.CreateZKProof(
+	zkTx, err := prover.CreateZKTx(
 		sender.PrivateKey,
 		receiver.Address, amt, fee,
 		useNote,
@@ -55,7 +55,7 @@ func TestTransfer(t *testing.T) {
 	fmt.Printf("changeNote : (%4dB) %x\n", len(zkTx.NewNoteCommitments[1]), zkTx.NewNoteCommitments[1])
 
 	// send the ZKTx to the verifier
-	err = verifier.VerifyZKProof(zkTx)
+	err = verifier.VerifyZKTx(zkTx)
 	require.NoError(t, err)
 
 	fmt.Println("---")
@@ -70,6 +70,48 @@ func TestTransfer(t *testing.T) {
 
 	fmt.Println("sender balance  : ", senderBalance0.Dec(), "-->", senderBalance1.Dec())
 	fmt.Println("receiver balance: ", recieverBalance0.Dec(), "-->", recieverBalance1.Dec())
+}
+
+func Test_NonExistNote(t *testing.T) {
+	sender := prover.Wallets[0]
+	receiver := prover.Wallets[5]
+	amt, fee := uint256.NewInt(10), uint256.NewInt(0)
+
+	nonExistNote := &types.Note{
+		Version: 1,
+		PubKey:  sender.PrivateKey.Public(),
+		Balance: uint256.NewInt(1_000_000),
+		Salt:    types.RandBytes(32),
+	}
+
+	// get merkle proof info for the existing note.
+	existNote := sender.GetSharedNote(0).ToNoteOf(sender.PrivateKey.Public())
+	rootHash, proofPath, depth, idx, numLeaves, err := verifier.GetNoteCommitmentMerkle(existNote.Commitment())
+	require.NoError(t, err)
+	fmt.Printf("Merkle Info: numLeaves=%d, idx=%d, depth=%d, proofPath.len=%d\n", numLeaves, idx, depth, len(proofPath))
+
+	// expected error: nonExistNote.Commitment() is not in the proofPath
+	_, err = prover.CreateZKTx(
+		sender.PrivateKey,
+		receiver.Address, amt, fee,
+		nonExistNote,
+		rootHash, proofPath, depth, idx,
+		prKey, css,
+	)
+	require.Error(t, err)
+
+	// fake the proofPath to have the nonExistNote.Commitment()
+	proofPath[0] = nonExistNote.Commitment()
+
+	// expected error: rootHash is not same
+	_, err = prover.CreateZKTx(
+		sender.PrivateKey,
+		receiver.Address, amt, fee,
+		nonExistNote,
+		rootHash, proofPath, depth, idx,
+		prKey, css,
+	)
+	require.Error(t, err)
 }
 
 func Test_WrongNewSharedNote(t *testing.T) {
@@ -90,7 +132,7 @@ func Test_WrongNewSharedNote(t *testing.T) {
 	//fmt.Printf("Merkle Info: numLeaves=%d, idx=%d, depth=%d, proofPath.len=%d\n", numLeaves, idx, depth, len(proofPath))
 
 	// generate the ZKTx including zk-proof
-	zkTx, err := prover.CreateZKProof(
+	zkTx, err := prover.CreateZKTx(
 		sender.PrivateKey,
 		receiver.Address, amt, fee,
 		useNote,
@@ -111,7 +153,7 @@ func Test_WrongNewSharedNote(t *testing.T) {
 	require.NoError(t, err)
 
 	// send the ZKTx to the verifier
-	err = verifier.VerifyZKProof(zkTx)
+	err = verifier.VerifyZKTx(zkTx)
 	require.NoError(t, err)
 
 	fmt.Println("---")

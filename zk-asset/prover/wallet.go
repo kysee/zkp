@@ -18,7 +18,7 @@ type Wallet struct {
 }
 
 var (
-	Wallets = make([]*Wallet, 0)
+	Wallets []*Wallet
 )
 
 func init() {

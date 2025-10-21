@@ -13,9 +13,9 @@ import (
 	"github.com/kysee/zkp/zk-asset/crypto"
 )
 
-type NoteCommitment []byte
-type NoteNullifier []byte
-type SecretNote []byte
+type NoteCommitment = []byte
+type NoteNullifier = []byte
+type SecretNote = []byte
 
 type Note struct {
 	Version byte

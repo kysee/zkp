@@ -10,36 +10,13 @@ import (
 	"github.com/kysee/zkp/zk-asset/types"
 )
 
-func VerifyZKProof(zktx *types.ZKTx) error {
-	return verifyZKProof(zktx, noteCommitmentsRoot)
-}
-func verifyZKProof(zktx *types.ZKTx, merkleRootHash []byte) error {
-	// verify zk proof and handdles nullifier, new note commitments
+func VerifyZKTx(zktx *types.ZKTx) error {
 
-	if FindNoteNullifier(zktx.Nullifier) != nil {
-		return errors.New("nullifier already exists")
-	}
-
-	proof := plonk.NewProof(ecc.BN254)
-	if _, err := proof.ReadFrom(bytes.NewBuffer(zktx.ProofBytes)); err != nil {
-		return err
-	}
-
-	// todo: Verify zktx.MerkleRoot
-	// the below is a temporary solution.
-	// when zktx was made, the merkle root hash may be different from the latest one (`noteCommitmentsRoot`).
-	tmpAssignment := types.ZKCircuit{
-		NoteMerkleRoot:       merkleRootHash, // don't use the zktx.MerkleRoot; it may be faked.
-		Nullifier:            []byte(zktx.Nullifier),
-		NewNoteCommitment:    []byte(zktx.NewNoteCommitments[0]),
-		ChangeNoteCommitment: []byte(zktx.NewNoteCommitments[1]),
-	}
-	pubWtn, err := frontend.NewWitness(&tmpAssignment, ecc.BN254.ScalarField(), frontend.PublicOnly())
-	if err != nil {
-		return err
-	}
-	err = plonk.Verify(proof, ZKVerifyingKey, pubWtn)
-	if err != nil {
+	if err := VerifyZKProof(
+		zktx.ProofBytes,
+		noteCommitmentsRoot,
+		zktx.Nullifier,
+		zktx.NewNoteCommitments); err != nil {
 		return err
 	}
 
@@ -50,4 +27,32 @@ func verifyZKProof(zktx *types.ZKTx, merkleRootHash []byte) error {
 	addSecretNote(zktx.NewSecretNotes[1])
 	addZKTx(zktx)
 	return nil
+}
+
+func VerifyZKProof(bzProof []byte, merkleRootHash, nullifier []byte, newCommitments [][]byte) error {
+	// verify zk proof and handdles nullifier, new note commitments
+
+	if FindNoteNullifier(nullifier) != nil {
+		return errors.New("nullifier already exists")
+	}
+
+	proof := plonk.NewProof(ecc.BN254)
+	if _, err := proof.ReadFrom(bytes.NewBuffer(bzProof)); err != nil {
+		return err
+	}
+
+	// todo: Verify zktx.MerkleRoot
+	// the below is a temporary solution.
+	// when zktx was made, the merkle root hash may be different from the latest one (`noteCommitmentsRoot`).
+	tmpAssignment := types.ZKCircuit{
+		NoteMerkleRoot:       merkleRootHash, // don't use the zktx.MerkleRoot; it may be faked.
+		Nullifier:            nullifier,
+		NewNoteCommitment:    newCommitments[0],
+		ChangeNoteCommitment: newCommitments[1],
+	}
+	pubWtn, err := frontend.NewWitness(&tmpAssignment, ecc.BN254.ScalarField(), frontend.PublicOnly())
+	if err != nil {
+		return err
+	}
+	return plonk.Verify(proof, ZKVerifyingKey, pubWtn)
 }

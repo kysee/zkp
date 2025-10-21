@@ -33,52 +33,10 @@ func TestFakeMerkle_WrongRootHash(t *testing.T) {
 	rootHash[0], rootHash[1] = rootHash[1], rootHash[0]
 
 	// generate the ZKTx including zk-proof
-	_, err = prover.CreateZKProof(
+	_, err = prover.CreateZKTx(
 		sender.PrivateKey,
 		receiver.Address, amt, fee,
 		useNote,
-		rootHash, proofPath, depth, idx,
-		prKey, css,
-	)
-	require.Error(t, err)
-}
-
-func TestFakeMerkle_NonExistNote(t *testing.T) {
-	sender := prover.Wallets[0]
-	receiver := prover.Wallets[5]
-	amt, fee := uint256.NewInt(10), uint256.NewInt(0)
-
-	nonExistNote := &types.Note{
-		Version: 1,
-		PubKey:  sender.PrivateKey.Public(),
-		Balance: uint256.NewInt(1_000_000),
-		Salt:    types.RandBytes(32),
-	}
-
-	// get merkle proof info for the existing note.
-	existNote := sender.GetSharedNote(0).ToNoteOf(sender.PrivateKey.Public())
-	rootHash, proofPath, depth, idx, numLeaves, err := verifier.GetNoteCommitmentMerkle(existNote.Commitment())
-	require.NoError(t, err)
-	fmt.Printf("Merkle Info: numLeaves=%d, idx=%d, depth=%d, proofPath.len=%d\n", numLeaves, idx, depth, len(proofPath))
-
-	// expected error: nonExistNote.Commitment() is not in the proofPath
-	_, err = prover.CreateZKProof(
-		sender.PrivateKey,
-		receiver.Address, amt, fee,
-		nonExistNote,
-		rootHash, proofPath, depth, idx,
-		prKey, css,
-	)
-	require.Error(t, err)
-
-	// make the proofPath have the nonExistNote.Commitment()
-	proofPath[0] = nonExistNote.Commitment()
-
-	// expected error: rootHash is not same
-	_, err = prover.CreateZKProof(
-		sender.PrivateKey,
-		receiver.Address, amt, fee,
-		nonExistNote,
 		rootHash, proofPath, depth, idx,
 		prKey, css,
 	)
@@ -130,7 +88,7 @@ func TestFakeMerkle_UseFakeMerkle(t *testing.T) {
 	fmt.Printf("Merkle Info: numLeaves=%d, idx=%d, depth=%d, proofPath.len=%d\n", numLeaves, idx, depth, len(proofPath))
 
 	// generate the ZKTx including zk-proof
-	zkTx, err := prover.CreateZKProof(
+	zkTx, err := prover.CreateZKTx(
 		faker.PrivateKey,
 		receiver.Address, amt, fee,
 		useNote,
@@ -141,7 +99,7 @@ func TestFakeMerkle_UseFakeMerkle(t *testing.T) {
 	// so, the proof generation by TransferProof is succeeded.
 	require.NoError(t, err)
 	// expected error: the zkTx.MerkleRoot is different from the merkle root hash of the verifier.
-	err = verifier.VerifyZKProof(zkTx)
+	err = verifier.VerifyZKTx(zkTx)
 	require.Error(t, err)
 }
 
