@@ -21,7 +21,7 @@ import (
 type Wallet struct {
 	Address     string
 	PrivateKey  signature.Signer
-	secretNotes []*SecretNote
+	sharedNotes []*SharedNote
 }
 
 var (
@@ -36,37 +36,37 @@ func NewWallet() *Wallet {
 	}
 }
 
-func (w *Wallet) AddSecretNote(note *SecretNote) {
-	w.secretNotes = append(w.secretNotes, note)
+func (w *Wallet) AddSharedNote(note *SharedNote) {
+	w.sharedNotes = append(w.sharedNotes, note)
 }
 
-func (w *Wallet) GetSecretNote(idx int) *SecretNote {
-	if idx < len(w.secretNotes) {
-		return w.secretNotes[idx]
+func (w *Wallet) GetSharedNote(idx int) *SharedNote {
+	if idx < len(w.sharedNotes) {
+		return w.sharedNotes[idx]
 	}
 	return nil
 }
 
-func (w *Wallet) GetSecretNotesCount() int {
-	return len(w.secretNotes)
+func (w *Wallet) GetSharedNotesCount() int {
+	return len(w.sharedNotes)
 }
 
-func (w *Wallet) DelSecretNote(note *SecretNote) {
+func (w *Wallet) DelSharedNote(note *SharedNote) {
 	found := -1
-	for i, n := range w.secretNotes {
+	for i, n := range w.sharedNotes {
 		if bytes.Equal(n.Salt, note.Salt) {
 			found = i
 			break
 		}
 	}
 	if found >= 0 {
-		w.secretNotes = append(w.secretNotes[:found], w.secretNotes[found+1:]...)
+		w.sharedNotes = append(w.sharedNotes[:found], w.sharedNotes[found+1:]...)
 	}
 }
 
 func (w *Wallet) GetBalance() *uint256.Int {
 	ret := uint256.NewInt(0)
-	for _, n := range w.secretNotes {
+	for _, n := range w.sharedNotes {
 		ret = ret.Add(ret, n.Balance)
 	}
 	return ret
@@ -95,8 +95,8 @@ func (w *Wallet) TransferProof(
 		Balance: amt,
 		Salt:    salt1,
 	}
-	newSecretNote := newNote.ToSecretNote()
-	encNewSecretNote, senderTmPubKey, err := EncryptSecretNote(newSecretNote, nil, toPubKey)
+	newSharedNote := newNote.ToSharedNote()
+	newSecretNote, err := EncryptSharedNote(newSharedNote, nil, toPubKey)
 
 	changeNote := &Note{
 		Version: 1,
@@ -178,7 +178,7 @@ func (w *Wallet) TransferProof(
 		Nullifier:            nullifier,
 		ChangeNoteCommitment: changeNoteC,
 		NewNoteCommitment:    newNoteC,
-		EncryptedSecretNote:  append(senderTmPubKey, encNewSecretNote...),
+		SecretNote:           newSecretNote,
 	}, []*Note{newNote, changeNote}, nil
 }
 

@@ -47,7 +47,7 @@ func init() {
 		}
 		AddNoteCommitment(note.Commitment())
 
-		secretNote := &types.SecretNote{
+		sharedNote := &types.SharedNote{
 			Version: 1,
 			Balance: balance,
 			Salt:    salt,
@@ -55,13 +55,13 @@ func init() {
 		}
 
 		//
-		// Encrypt the SecretNote
+		// Encrypt the SharedNote
 
-		encSecretNote, bzPubKey, err := types.EncryptSecretNote(secretNote, nil, w.PrivateKey.Public())
+		secretNote, err := types.EncryptSharedNote(sharedNote, nil, w.PrivateKey.Public())
 		if err != nil {
 			panic(err)
 		}
-		AddEncryptedSecretNote(append(bzPubKey, encSecretNote...))
+		AddSecretNote(secretNote)
 	}
 }
 
@@ -111,15 +111,15 @@ func VerifyNoteCommitmentProof(commitment types.NoteCommitment, root []byte, idx
 }
 
 // for secret notes
-var encryptedSecretNotes [][]byte // [ECDHE public key | ciphertext]
+var ledgerSecretNotes [][]byte // [ECDHE public key | ciphertext]
 
-func AddEncryptedSecretNote(enc []byte) {
-	encryptedSecretNotes = append(encryptedSecretNotes, enc)
+func AddSecretNote(enc []byte) {
+	ledgerSecretNotes = append(ledgerSecretNotes, enc)
 }
 
-func GetEncryptedSecretNote(idx int) []byte {
-	if idx < len(encryptedSecretNotes) {
-		return encryptedSecretNotes[idx]
+func GetSecretNote(idx int) []byte {
+	if idx < len(ledgerSecretNotes) {
+		return ledgerSecretNotes[idx]
 	}
 	return nil
 }

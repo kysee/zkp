@@ -12,7 +12,7 @@ import (
 // Parameters:
 //   - key: A 32-byte symmetric encryption key.
 //   - nonce: A 12-byte nonce, which must be unique for each encryption with the same key.
-//   - plaintext: The data to be encrypted (e.g., the serialized SecretNote).
+//   - plaintext: The data to be encrypted (e.g., the serialized SharedNote).
 //   - additionalData: Data to be authenticated but not encrypted. In Zcash, this is
 //     typically the ephemeral public key (epk).
 //

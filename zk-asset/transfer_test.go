@@ -27,17 +27,17 @@ func init() {
 	for i := 0; i < len(types.Wallets); i++ {
 		owner := types.Wallets[i]
 
+		// find my shared notes
 		for j := 0; ; j++ {
-			sn := node.GetEncryptedSecretNote(j)
+			sn := node.GetSecretNote(j)
 			if sn == nil {
 				break
 			}
 
-			bzSenderPubKey, encSecretNote := sn[0:32], sn[32:]
-			secretNote, err := types.DecryptSecretNote(encSecretNote, nil, owner.PrivateKey, bzSenderPubKey)
+			sharedNote, err := types.DecryptSharedNote(sn, nil, owner.PrivateKey)
 			if err == nil {
 				// success
-				owner.AddSecretNote(secretNote)
+				owner.AddSharedNote(sharedNote)
 			}
 		}
 	}
@@ -51,8 +51,8 @@ func TestTransfer(t *testing.T) {
 	senderBalance0 := sender.GetBalance()
 	recieverBalance0 := receiver.GetBalance()
 
-	useSecretNote := sender.GetSecretNote(0)
-	useNote := useSecretNote.ToNoteOf(sender.PrivateKey.Public())
+	useSharedNote := sender.GetSharedNote(0)
+	useNote := useSharedNote.ToNoteOf(sender.PrivateKey.Public())
 	useNoteCommitment := useNote.Commitment()
 
 	// get merkle proof info.
@@ -80,9 +80,9 @@ func TestTransfer(t *testing.T) {
 
 	fmt.Println("---")
 
-	sender.DelSecretNote(useSecretNote)
-	sender.AddSecretNote(newNotes[1].ToSecretNote()) // for change
-	receiver.AddSecretNote(newNotes[0].ToSecretNote())
+	sender.DelSharedNote(useSharedNote)
+	sender.AddSharedNote(newNotes[1].ToSharedNote()) // for change
+	receiver.AddSharedNote(newNotes[0].ToSharedNote())
 
 	senderBalance1 := sender.GetBalance()
 	recieverBalance1 := receiver.GetBalance()
@@ -101,8 +101,8 @@ func TestTransfer_WrongMerkleRootHash(t *testing.T) {
 	receiver := types.Wallets[5]
 	amt, fee := uint256.NewInt(10), uint256.NewInt(0)
 
-	useSecretNote := sender.GetSecretNote(0)
-	useNote := useSecretNote.ToNoteOf(sender.PrivateKey.Public())
+	useSharedNote := sender.GetSharedNote(0)
+	useNote := useSharedNote.ToNoteOf(sender.PrivateKey.Public())
 	useNoteCommitment := useNote.Commitment()
 
 	// get merkle proof info.
@@ -136,7 +136,7 @@ func TestTransfer_NonExistNote(t *testing.T) {
 	}
 
 	// get merkle proof info for the existing note.
-	existNote := sender.GetSecretNote(0).ToNoteOf(sender.PrivateKey.Public())
+	existNote := sender.GetSharedNote(0).ToNoteOf(sender.PrivateKey.Public())
 	rootHash, proofPath, depth, idx, numLeaves, err := node.GetNoteCommitmentMerkle(existNote.Commitment())
 	require.NoError(t, err)
 	fmt.Printf("Merkle Info: numLeaves=%d, idx=%d, depth=%d, proofPath.len=%d\n", numLeaves, idx, depth, len(proofPath))
@@ -186,20 +186,20 @@ func TestTransfer_FakeMerkle(t *testing.T) {
 		fakeMerkleTree.Push(commitment)
 		fakeCommitmentsRoot = fakeMerkleTree.Root()
 
-		secretNote := &types.SecretNote{
+		sharedNote := &types.SharedNote{
 			Version: 1,
 			Balance: balance,
 			Salt:    salt,
 			Memo:    nil,
 		}
-		faker.AddSecretNote(secretNote)
+		faker.AddSharedNote(sharedNote)
 	}
 
 	receiver := types.NewWallet()
 	amt, fee := uint256.NewInt(10), uint256.NewInt(0)
 
-	useSecretNote := faker.GetSecretNote(0)
-	useNote := useSecretNote.ToNoteOf(faker.PrivateKey.Public())
+	useSharedNote := faker.GetSharedNote(0)
+	useNote := useSharedNote.ToNoteOf(faker.PrivateKey.Public())
 	useNoteCommitment := useNote.Commitment()
 
 	// get merkle proof info.

@@ -67,8 +67,8 @@ func (n *Note) Nullifier(sk0, sk1 []byte) []byte {
 	)
 }
 
-func (n *Note) ToSecretNote() *SecretNote {
-	return &SecretNote{
+func (n *Note) ToSharedNote() *SharedNote {
+	return &SharedNote{
 		Version: n.Version,
 		Balance: n.Balance,
 		Salt:    n.Salt,
@@ -76,9 +76,9 @@ func (n *Note) ToSecretNote() *SecretNote {
 	}
 }
 
-// SecretNote represents the plaintext data of a note that will be encrypted and sent to the recipient.
+// SharedNote represents the plaintext data of a note that will be encrypted and sent to the recipient.
 // It is analogous to the Note Plaintext structure in Zcash Sapling.
-type SecretNote struct {
+type SharedNote struct {
 	// Version indicates the format version of the note.
 	Version byte
 
@@ -92,21 +92,21 @@ type SecretNote struct {
 	Memo []byte
 }
 
-// Bytes returns the RLP-encoded representation of the SecretNote as a byte slice.
+// Bytes returns the RLP-encoded representation of the SharedNote as a byte slice.
 // It panics if the encoding fails.
-func (sn *SecretNote) Bytes() []byte {
+func (sn *SharedNote) Bytes() []byte {
 	b, err := rlp.EncodeToBytes(sn)
 	if err != nil {
 		// Typically, a Bytes() method does not return an error.
 		// We treat this as a critical internal error and panic.
-		panic(fmt.Sprintf("failed to RLP encode SecretNote: %v", err))
+		panic(fmt.Sprintf("failed to RLP encode SharedNote: %v", err))
 	}
 	return b
 }
 
-// EncodeRLP encodes the SecretNote into RLP format.
+// EncodeRLP encodes the SharedNote into RLP format.
 // This method implements the rlp.Encoder interface.
-func (sn *SecretNote) EncodeRLP(w *bytes.Buffer) error {
+func (sn *SharedNote) EncodeRLP(w *bytes.Buffer) error {
 	// Convert Balance to *big.Int for encoding, as rlp has built-in support for it.
 	balanceBig := sn.Balance.ToBig()
 
@@ -119,9 +119,9 @@ func (sn *SecretNote) EncodeRLP(w *bytes.Buffer) error {
 	})
 }
 
-// DecodeRLP decodes RLP data into the SecretNote.
+// DecodeRLP decodes RLP data into the SharedNote.
 // This method implements the rlp.Decoder interface.
-func (sn *SecretNote) DecodeRLP(s *rlp.Stream) error {
+func (sn *SharedNote) DecodeRLP(s *rlp.Stream) error {
 	// Use a temporary struct for decoding.
 	var temp struct {
 		Version byte
@@ -148,7 +148,7 @@ func (sn *SecretNote) DecodeRLP(s *rlp.Stream) error {
 	return nil
 }
 
-func (sn *SecretNote) ToNoteOf(pubKey signature.PublicKey) *Note {
+func (sn *SharedNote) ToNoteOf(pubKey signature.PublicKey) *Note {
 	return &Note{
 		Version: sn.Version,
 		PubKey:  pubKey,
@@ -157,8 +157,8 @@ func (sn *SecretNote) ToNoteOf(pubKey signature.PublicKey) *Note {
 	}
 }
 
-func (sn *SecretNote) Encrypt(sharedSecret, ad []byte) ([]byte, error) {
-	saplingKDF, err := crypto.SaplingKDF(sharedSecret, 44)
+func (sn *SharedNote) Encrypt(sharedKey, ad []byte) ([]byte, error) {
+	saplingKDF, err := crypto.SaplingKDF(sharedKey, 44)
 	if err != nil {
 		return nil, err
 	}
@@ -168,8 +168,8 @@ func (sn *SecretNote) Encrypt(sharedSecret, ad []byte) ([]byte, error) {
 	return crypto.ChaCha20Poly1305_Encrypt(encKey, nonce, sn.Bytes(), ad)
 }
 
-func (sn *SecretNote) Decrypt(sharedSecret, ad, ciphertext []byte) error {
-	saplingKDF, err := crypto.SaplingKDF(sharedSecret, 44)
+func (sn *SharedNote) Decrypt(sharedKey, ciphertext, ad []byte) error {
+	saplingKDF, err := crypto.SaplingKDF(sharedKey, 44)
 	if err != nil {
 		return err
 	}
@@ -180,31 +180,32 @@ func (sn *SecretNote) Decrypt(sharedSecret, ad, ciphertext []byte) error {
 	return rlp.DecodeBytes(plaintext, sn)
 }
 
-// EncryptSecretNote encrypts a SecretNote and returns the ciphertext and temporarily public key
-func EncryptSecretNote(sn *SecretNote, ad []byte, receiverPubKey signature.PublicKey) ([]byte, []byte, error) {
-	// Encrypt the SecretNote
+// EncryptSharedNote encrypts a SharedNote and returns the ciphertext and temporarily public key
+func EncryptSharedNote(sn *SharedNote, ad []byte, receiverPubKey signature.PublicKey) ([]byte, error) {
+	// Encrypt the SharedNote
 	tmpKey, err := crypto.NewKey()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	sharedSecret, err := crypto.ECDHSharedSecret(tmpKey, receiverPubKey)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	ciphertext, err := sn.Encrypt(sharedSecret, ad)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	return ciphertext, tmpKey.Public().Bytes(), nil
+	return append(tmpKey.Public().Bytes(), ciphertext...), nil
 }
 
-func DecryptSecretNote(ciphertext []byte, ad []byte, myPrivKey signature.Signer, senderPubKeyBytes []byte) (*SecretNote, error) {
+func DecryptSharedNote(secretNote []byte, ad []byte, myPrivKey signature.Signer) (*SharedNote, error) {
+	bzSenderPubKey, ciphertext := secretNote[:32], secretNote[32:]
 	pubKey := crypto.NewPub()
-	pubKey.SetBytes(senderPubKeyBytes)
+	pubKey.SetBytes(bzSenderPubKey)
 	sharedSecret, err := crypto.ECDHSharedSecret(myPrivKey, pubKey)
 
-	sn := &SecretNote{}
-	err = sn.Decrypt(sharedSecret, ad, ciphertext)
+	sn := &SharedNote{}
+	err = sn.Decrypt(sharedSecret, ciphertext, ad)
 	return sn, err
 }
