@@ -17,7 +17,7 @@ import (
 const noteMerkleDepth = 32
 
 var (
-	zkCircuit      constraint.ConstraintSystem
+	ZKCSS          constraint.ConstraintSystem
 	ZKProvingKey   plonk.ProvingKey
 	ZKVerifyingKey plonk.VerifyingKey
 
@@ -28,7 +28,7 @@ var (
 
 func init() {
 	merkleNoteCommitments = merkletree.New(utils.MiMCHasher())
-	zkCircuit, ZKProvingKey, ZKVerifyingKey = types.CompileCircuit(noteMerkleDepth)
+	ZKCSS, ZKProvingKey, ZKVerifyingKey = types.CompileCircuit(noteMerkleDepth)
 }
 
 func InitMint(addr string, amount *uint256.Int) {

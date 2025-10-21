@@ -1,11 +1,13 @@
 package zk_asset
 
 import (
+	"bytes"
 	"fmt"
 	"testing"
 
 	"github.com/consensys/gnark/backend/plonk"
 	"github.com/consensys/gnark/constraint"
+	cs_bn254 "github.com/consensys/gnark/constraint/bn254"
 	"github.com/holiman/uint256"
 	"github.com/kysee/zkp/zk-asset/prover"
 	"github.com/kysee/zkp/zk-asset/types"
@@ -19,7 +21,21 @@ var (
 )
 
 func init() {
-	css, prKey, _ = types.CompileCircuit(verifier.GetNoteCommitmentMerkleDepth())
+
+	// reconstruct the constraint system from the circuit compiled in the verifier
+
+	buf := bytes.NewBuffer(nil)
+	if _, err := verifier.ZKCSS.WriteTo(buf); err != nil {
+		panic(err)
+	}
+
+	var _css cs_bn254.SparseR1CS
+	if _, err := _css.ReadFrom(buf); err != nil {
+		panic(err)
+	}
+
+	css = &_css
+	prKey = verifier.ZKProvingKey
 }
 
 func TestTransfer(t *testing.T) {
