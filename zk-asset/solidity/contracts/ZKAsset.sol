@@ -62,7 +62,7 @@ contract ZKAsset {
      * @param encryptedNote Encrypted note for recipient
      */
     function transfer(
-        uint256[] calldata proof,
+        bytes calldata proof,
         uint256[] calldata publicInputs,
         bytes calldata encryptedNote
     ) external {

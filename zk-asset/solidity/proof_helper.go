@@ -51,6 +51,10 @@ func GenerateTransferProof(params *TransferParams) (*ProofData, error) {
 		Balance: params.Amount,
 		Salt:    params.NewNoteSalt,
 	}
+	newSecretNote, err := types.EncryptSharedNote(newNote.ToSharedNote(), nil, toPubKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encrypt new note: %v", err)
+	}
 
 	// Create change note
 	change := new(uint256.Int).Sub(params.FromNote.Balance, params.Amount)
@@ -61,6 +65,10 @@ func GenerateTransferProof(params *TransferParams) (*ProofData, error) {
 		PubKey:  params.FromNote.PubKey,
 		Balance: change,
 		Salt:    params.ChangeNoteSalt,
+	}
+	changeSecretNote, err := types.EncryptSharedNote(changeNote.ToSharedNote(), nil, params.FromPrivateKey.Public())
+	if err != nil {
+		return nil, fmt.Errorf("failed to encrypt change note: %v", err)
 	}
 
 	// Use existing CreateZKProof function
@@ -83,6 +91,8 @@ func GenerateTransferProof(params *TransferParams) (*ProofData, error) {
 			fmt.Sprintf("0x%x", nullifier),
 			fmt.Sprintf("0x%x", newNoteC),
 			fmt.Sprintf("0x%x", changeNoteC),
+			fmt.Sprintf("0x%x", newSecretNote),
+			fmt.Sprintf("0x%x", changeSecretNote),
 		},
 	}
 

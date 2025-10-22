@@ -163,7 +163,7 @@ contract PlonkVerifier {
   /// @param proof serialised plonk proof (using gnark's MarshalSolidity)
   /// @param public_inputs (must be reduced)
   /// @return success true if the proof passes false otherwise
-  function Verify(bytes calldata proof, uint256[] calldata public_inputs) 
+  function verifyProof(bytes calldata proof, uint256[] calldata public_inputs)
   public view returns(bool success) {
 
     assembly {

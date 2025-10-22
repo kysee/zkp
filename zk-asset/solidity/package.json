@@ -2,17 +2,24 @@
   "name": "zk-asset-solidity",
   "version": "1.0.0",
   "description": "Solidity implementation of ZK Asset Transfer",
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "hardhat.config.js",
+  "directories": {
+    "test": "test"
+  },
   "scripts": {
     "compile": "hardhat compile",
     "test": "hardhat test",
     "deploy": "hardhat run scripts/deploy.js",
     "node": "hardhat node"
   },
+  "dependencies": {
+    "@openzeppelin/contracts": "^4.9.0"
+  },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^4.0.0",
     "hardhat": "^2.19.0"
-  },
-  "dependencies": {
-    "@openzeppelin/contracts": "^4.9.0"
   }
 }
