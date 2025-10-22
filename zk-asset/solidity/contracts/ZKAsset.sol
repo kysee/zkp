@@ -17,7 +17,7 @@ contract ZKAsset {
     PlonkVerifier public immutable verifier;
 
     // Merkle tree for note commitments
-    uint256 public constant TREE_DEPTH = 5;
+    uint256 public constant TREE_DEPTH = 32;
     uint256 public constant MAX_LEAVES = 2**TREE_DEPTH;
 
     // State variables
