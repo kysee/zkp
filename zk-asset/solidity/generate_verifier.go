@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"os"
 
-	"github.com/kysee/zkp/zk-asset/types"
+	"github.com/kysee/zkp/zk-asset/verifier"
 )
 
 func main() {
-	// 회로 컴파일 (Merkle tree depth = 5)
-	const depth = 5
-	_, _, vk := types.CompileCircuit(depth)
+	//// 회로 컴파일 (Merkle tree depth = 5)
+	//const depth = 5
+	//_, _, vk := types.CompileCircuit(depth)
+	vk := verifier.ZKVerifyingKey
 
 	// contracts 디렉토리 생성
 	err := os.MkdirAll("contracts", 0755)
