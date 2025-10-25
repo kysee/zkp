@@ -4,7 +4,7 @@ pragma solidity ^0.8.19;
 import "./PlonkVerifier.sol";
 
 /**
- * @title ZKAsset
+ * @title ZKToken.sol
  * @dev Private asset transfer system using zero-knowledge proofs
  * Features:
  * - Confidential transfers (hidden amounts, addresses)
@@ -12,7 +12,7 @@ import "./PlonkVerifier.sol";
  * - Note commitments for UTXO tracking
  * - Encrypted notes for recipient-only visibility
  */
-contract ZKAsset {
+contract ZKToken {
     // Plonk verifier contract
     PlonkVerifier public immutable verifier;
 
@@ -138,6 +138,7 @@ contract ZKAsset {
 
     /**
      * @dev Update merkle tree root after adding leaves
+     * todo: implement it as precompiled code
      */
     function _updateMerkleRoot() internal {
         // Build tree bottom-up
@@ -159,6 +160,8 @@ contract ZKAsset {
      * @dev Generate merkle proof for a given leaf index
      * @param leafIndex Index of the leaf
      * @return path Merkle path from leaf to root
+     *
+     * todo: implement it as precompiled code
      */
     function getMerkleProof(uint256 leafIndex) external view returns (uint256[] memory path) {
         require(leafIndex < nextLeafIndex, "Invalid leaf index");

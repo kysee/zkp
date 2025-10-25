@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
-describe("ZKAsset", function () {
+describe("ZKToken.sol", function () {
   let zkAsset;
   let verifier;
   let owner;
@@ -16,8 +16,8 @@ describe("ZKAsset", function () {
     verifier = await PlonkVerifier.deploy();
     await verifier.deployed();
 
-    // Deploy ZKAsset
-    const ZKAsset = await ethers.getContractFactory("ZKAsset");
+    // Deploy ZKToken.sol
+    const ZKAsset = await ethers.getContractFactory("ZKToken.sol");
     zkAsset = await ZKAsset.deploy(verifier.address);
     await zkAsset.deployed();
   });
