@@ -1,0 +1,5 @@
+{
+    "chainId": "0x1234",
+    "providerUrl": "http://localhost:26657",
+    "deployerPrvKey": "29F2872B101062EDC1E67A03604827A0C6638A224256D823639E3F161C36E005"
+}
