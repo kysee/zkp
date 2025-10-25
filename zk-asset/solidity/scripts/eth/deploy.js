@@ -15,12 +15,12 @@ async function main() {
   await verifier.deployed();
   console.log("✅ PlonkVerifier deployed to:", verifier.address);
 
-  // Deploy ZKAsset
-  console.log("\n2. Deploying ZKAsset...");
-  const ZKAsset = await ethers.getContractFactory("ZKAsset");
+  // Deploy ZKToken.sol
+  console.log("\n2. Deploying ZKToken.sol...");
+  const ZKAsset = await ethers.getContractFactory("ZKToken.sol");
   const zkAsset = await ZKAsset.deploy(verifier.address);
   await zkAsset.deployed();
-  console.log("✅ ZKAsset deployed to:", zkAsset.address);
+  console.log("✅ ZKToken.sol deployed to:", zkAsset.address);
 
   // Get initial state
   const [merkleRoot, leafCount] = await zkAsset.getTreeState();
