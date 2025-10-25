@@ -14,17 +14,17 @@ describe("ZKToken.sol", function () {
     // Deploy PlonkVerifier
     const PlonkVerifier = await ethers.getContractFactory("PlonkVerifier");
     verifier = await PlonkVerifier.deploy();
-    await verifier.deployed();
+    await verifier.waitForDeployment();
 
     // Deploy ZKToken.sol
-    const ZKAsset = await ethers.getContractFactory("ZKToken.sol");
-    zkAsset = await ZKAsset.deploy(verifier.address);
-    await zkAsset.deployed();
+    const ZKAsset = await ethers.getContractFactory("ZKToken");
+    zkAsset = await ZKAsset.deploy(await verifier.getAddress());
+    await zkAsset.waitForDeployment();
   });
 
   describe("Deployment", function () {
     it("Should set the correct verifier", async function () {
-      expect(await zkAsset.verifier()).to.equal(verifier.address);
+      expect(await zkAsset.verifier()).to.equal(await verifier.getAddress());
     });
 
     it("Should initialize with empty tree", async function () {
@@ -41,8 +41,8 @@ describe("ZKToken.sol", function () {
 
   describe("Deposits", function () {
     it("Should allow deposits of note commitments", async function () {
-      const commitment = ethers.utils.randomBytes(32);
-      const commitmentBigInt = ethers.BigNumber.from(commitment);
+      const commitment = ethers.randomBytes(32);
+      const commitmentBigInt = ethers.toBigInt(commitment);
 
       await expect(zkAsset.deposit(commitmentBigInt))
         .to.emit(zkAsset, "NoteAdded")
@@ -55,8 +55,8 @@ describe("ZKToken.sol", function () {
     });
 
     it("Should reject duplicate commitments", async function () {
-      const commitment = ethers.utils.randomBytes(32);
-      const commitmentBigInt = ethers.BigNumber.from(commitment);
+      const commitment = ethers.randomBytes(32);
+      const commitmentBigInt = ethers.toBigInt(commitment);
 
       await zkAsset.deposit(commitmentBigInt);
 
@@ -65,8 +65,8 @@ describe("ZKToken.sol", function () {
     });
 
     it("Should update merkle tree correctly", async function () {
-      const commitment1 = ethers.BigNumber.from(ethers.utils.randomBytes(32));
-      const commitment2 = ethers.BigNumber.from(ethers.utils.randomBytes(32));
+      const commitment1 = ethers.toBigInt(ethers.randomBytes(32));
+      const commitment2 = ethers.toBigInt(ethers.randomBytes(32));
 
       const [initialRoot] = await zkAsset.getTreeState();
 

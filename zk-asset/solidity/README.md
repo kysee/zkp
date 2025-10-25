@@ -164,7 +164,7 @@ REPORT_GAS=true npx hardhat test
 ├── scripts/
 │   └── deploy.js            # Deployment script
 ├── test/
-│   └── ZKToken.test.js      # Test suite
+│   └── ZKToken.test.ts      # Test suite
 ├── generate_verifier.go     # Verifier generation
 ├── proof_helper.go          # Proof generation helper
 └── README.md               # This file

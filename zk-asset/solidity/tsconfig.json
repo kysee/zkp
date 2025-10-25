@@ -6,13 +6,13 @@
     "esModuleInterop": true,
     "moduleResolution": "node",
     "resolveJsonModule": true,
-    "strict": true,
+    "strict": false,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "outDir": "./dist",
-    "rootDir": "./",
-    "declaration": true
+    "declaration": true,
+    "types": ["node", "mocha", "chai"]
   },
-  "include": ["scripts/**/*", "test/**/*"],
-  "exclude": ["node_modules"]
+  "include": ["./hardhat.config.ts", "./scripts/**/*", "./test/**/*"],
+  "exclude": ["node_modules", "dist", "cache", "artifacts"]
 }
