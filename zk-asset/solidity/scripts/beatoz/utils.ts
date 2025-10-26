@@ -75,30 +75,26 @@ export function panicTxCommitResult(txCommit: any) {
 }
 
 export function parseTxCommitResult(txCommit: any): string | null {
-    if (txCommit.check_tx.code != 0) {
-        const log = txCommit.check_tx.log;
-        const data = txCommit.check_tx.data;
-        let errMsg = "";
+    let step = "check_tx";
+    let code = txCommit.check_tx.code;
+    let log = txCommit.check_tx.log;
+    let data = txCommit.check_tx.data;
+
+    if (txCommit.deliver_tx.code != 0) {
+        step = "deliver_tx";
+        code = txCommit.deliver_tx.code;
+        log = txCommit.deliver_tx.log;
+        data = txCommit.deliver_tx.data;
+    }
+
+    if (code != 0) {
+        let errMsg: string | null  = null;
         if (data && log.includes('revert')) {
             errMsg = Buffer.from(data, 'base64').toString('hex');
         } else if (data) {
-            console.error(data);
             errMsg = Buffer.from(data, 'base64').toString('utf-8');
         }
-
-        return `error: check_tx(${txCommit.check_tx.code}) - ${log} (${errMsg})`;
-    }
-    if (txCommit.deliver_tx.code != 0) {
-        const log = txCommit.deliver_tx.log;
-        const data = txCommit.deliver_tx.data;
-        let errMsg: string | null = "";
-        if (data && log.includes('revert')) {
-            errMsg = _parseEvmCallError(Buffer.from(data, 'base64').toString('hex'), new Web3());
-        } else if (data) {
-            console.error(data);
-            errMsg = Buffer.from(data, 'base64').toString('utf-8');
-        }
-        return `error: deliver_tx(${txCommit.deliver_tx.code}) - ${log} (${errMsg})`;
+        return `error: ${step}(${txCommit.check_tx.code}) - ${log} (${errMsg})`;
     }
     return null;
 }
@@ -165,17 +161,14 @@ export class WrappedContract {
                 // Automatically choose call() or send() based on stateMutability
                 if (isReadOnly) {
                     const resp = await originalMethod.call();
-                    panicEvmCallError(resp, web3);
 
                     // Decode response data using ABI
-                    if (resp.value && resp.value.returnData) {
+                    if (resp.value && !resp.value.vmErr && resp.value.returnData) {
                         return this.decodeOutputs(resp.value.returnData, outputs);
                     }
                     return resp;
                 } else {
-                    const resp = originalMethod.send();
-                    panicTxCommitResult(resp);
-                    return resp;
+                    return await originalMethod.send({from: web3.beatoz.accounts.wallet.get(0)!.address, gas: 20000000});
                 }
             };
         }
