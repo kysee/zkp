@@ -7,11 +7,12 @@ toolchain go1.24.4
 require (
 	github.com/btcsuite/btcutil v1.0.2
 	github.com/consensys/gnark v0.14.0
-	github.com/consensys/gnark-crypto v0.19.0
+	github.com/consensys/gnark-crypto v0.19.2
 	github.com/ethereum/go-ethereum v1.16.5
 	github.com/herumi/bls-eth-go-binary v1.37.0
 	github.com/holiman/uint256 v1.3.2
 	github.com/protolambda/zrnt v0.34.1
+	github.com/protolambda/ztyp v0.2.2
 	github.com/rs/zerolog v1.34.0
 	github.com/stretchr/testify v1.10.0
 	golang.org/x/crypto v0.41.0
@@ -31,7 +32,6 @@ require (
 	github.com/minio/sha256-simd v1.0.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/protolambda/bls12-381-util v0.1.0 // indirect
-	github.com/protolambda/ztyp v0.2.2 // indirect
 	github.com/ronanh/intcomp v1.1.1 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	golang.org/x/sync v0.16.0 // indirect
