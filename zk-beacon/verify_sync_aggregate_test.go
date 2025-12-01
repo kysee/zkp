@@ -1,4 +1,4 @@
-package main
+package zk_beacon
 
 import (
 	"encoding/hex"
@@ -7,10 +7,12 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"testing"
 
 	bls "github.com/herumi/bls-eth-go-binary/bls"
 	"github.com/protolambda/zrnt/eth2/beacon/common"
 	"github.com/protolambda/ztyp/tree"
+	"github.com/stretchr/testify/require"
 )
 
 type SyncCommittee struct {
@@ -134,7 +136,7 @@ func aggregatePublicKeys(pubkeys []string, bits []bool) (*bls.PublicKey, error) 
 		return nil, fmt.Errorf("no public keys to aggregate")
 	}
 
-	fmt.Printf("Aggregated %d public keys\n", count)
+	//t.Logf("Aggregated %d public keys\n", count)
 	return aggPubkey, nil
 }
 
@@ -231,43 +233,31 @@ func verifySyncAggregate(syncCommittee *SyncCommittee, update *LightClientUpdate
 	return nil
 }
 
-func main() {
+func TestVerifySyncAggregate(t *testing.T) {
 	// Load sync committee
-	syncCommitteeFile, err := os.ReadFile("zk-beacon/sync-committee-1104.json")
-	if err != nil {
-		fmt.Printf("Error reading sync committee file: %v\n", err)
-		return
-	}
+	syncCommitteeFile, err := os.ReadFile("./sync-committee-1104.json")
+	require.NoError(t, err, "Failed to read sync committee file")
 
 	var syncCommittee SyncCommittee
-	if err := json.Unmarshal(syncCommitteeFile, &syncCommittee); err != nil {
-		fmt.Printf("Error parsing sync committee JSON: %v\n", err)
-		return
-	}
+	err = json.Unmarshal(syncCommitteeFile, &syncCommittee)
+	require.NoError(t, err, "Failed to parse sync committee JSON")
 
-	fmt.Printf("Loaded sync committee for period %s with %d pubkeys\n",
+	t.Logf("Loaded sync committee for period %s with %d pubkeys\n",
 		syncCommittee.Period, len(syncCommittee.Pubkeys))
 
 	// Load light client update
-	updateFile, err := os.ReadFile("zk-beacon/lcupdate.json")
-	if err != nil {
-		fmt.Printf("Error reading light client update file: %v\n", err)
-		return
-	}
+	updateFile, err := os.ReadFile("./lcupdate.json")
+	require.NoError(t, err, "Failed to read light client update file")
 
 	var update LightClientUpdate
-	if err := json.Unmarshal(updateFile, &update); err != nil {
-		fmt.Printf("Error parsing light client update JSON: %v\n", err)
-		return
-	}
+	err = json.Unmarshal(updateFile, &update)
+	require.NoError(t, err, "Failed to parse light client update JSON")
 
-	fmt.Printf("Loaded light client update for slot %s\n", update.Data.AttestedHeader.Beacon.Slot)
+	t.Logf("Loaded light client update for slot %s\n", update.Data.AttestedHeader.Beacon.Slot)
 
 	// Verify sync aggregate
-	if err := verifySyncAggregate(&syncCommittee, &update); err != nil {
-		fmt.Printf("Verification FAILED: %v\n", err)
-		return
-	}
+	err = verifySyncAggregate(&syncCommittee, &update)
+	require.NoError(t, err, "Failed to verify sync aggregate")
 
-	fmt.Println("Verification SUCCEEDED!")
+	t.Log("Verification SUCCEEDED!")
 }
