@@ -235,7 +235,7 @@ func verifySyncAggregate(syncCommittee *SyncCommittee, update *LightClientUpdate
 
 func TestVerifySyncAggregate(t *testing.T) {
 	// Load sync committee
-	syncCommitteeFile, err := os.ReadFile("./sync-committee-1104.json")
+	syncCommitteeFile, err := os.ReadFile("./curr-sync-committee.json")
 	require.NoError(t, err, "Failed to read sync committee file")
 
 	var syncCommittee SyncCommittee

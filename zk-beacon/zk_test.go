@@ -1,6 +1,7 @@
 package zk_beacon
 
 import (
+	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -33,6 +34,7 @@ type LightClientHeaderJSON struct {
 type LightClientUpdateJSON struct {
 	Data struct {
 		AttestedHeader LightClientHeaderJSON `json:"attested_header"`
+		SyncAggregate  SyncAggregate         `json:"sync_aggregate"`
 	} `json:"data"`
 }
 
@@ -94,7 +96,7 @@ func TestAttestedHeaderSSZRoot(t *testing.T) {
 
 	// Test the circuit using gnark test framework
 	assert := gnark_test.NewAssert(t)
-	err = gnark_test.IsSolved(&circuit.BlockRootHasher{}, &assignment, ecc.BN254.ScalarField())
+	err = gnark_test.IsSolved(&circuit.BlockRootHasher{}, &assignment, ecc.BLS12_381.ScalarField())
 	assert.NoError(err, "Circuit constraints should be satisfied")
 
 	fmt.Println("✓ Circuit constraints satisfied - SSZ root hash computation verified!")
@@ -133,7 +135,7 @@ func TestAttestedHeaderProofGeneration(t *testing.T) {
 	// Step 1: Compile the circuit
 	fmt.Println("Compiling circuit...")
 	var circuitInstance circuit.BlockRootHasher
-	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuitInstance)
+	ccs, err := frontend.Compile(ecc.BLS12_381.ScalarField(), r1cs.NewBuilder, &circuitInstance)
 	require.NoError(t, err, "Failed to compile circuit")
 	fmt.Printf("✓ Circuit compiled: %d constraints\n", ccs.GetNbConstraints())
 
@@ -148,14 +150,18 @@ func TestAttestedHeaderProofGeneration(t *testing.T) {
 	assignment.AssignBeaconHeader(slot, proposerIndex, parentRoot, stateRoot, bodyRoot)
 	assignment.AssignExpectedRoot(expectedRoot)
 
-	witness, err := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())
+	witness, err := frontend.NewWitness(&assignment, ecc.BLS12_381.ScalarField())
 	require.NoError(t, err, "Failed to create witness")
 
 	// Step 4: Generate proof
 	fmt.Println("Generating proof...")
 	proof, err := groth16.Prove(ccs, pk, witness)
 	require.NoError(t, err, "Failed to generate proof")
-	fmt.Println("✓ Proof generated")
+
+	bufProof := bytes.NewBuffer(nil)
+	_, err = proof.WriteTo(bufProof)
+
+	fmt.Println("✓ Proof generated", "length", bufProof.Len(), len(bufProof.Bytes()))
 
 	// Step 5: Verify proof
 	fmt.Println("Verifying proof...")
