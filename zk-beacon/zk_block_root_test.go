@@ -16,6 +16,7 @@ import (
 	"github.com/consensys/gnark/frontend/cs/r1cs"
 	gnark_test "github.com/consensys/gnark/test"
 	"github.com/kysee/zkp/zk-beacon/circuit"
+	"github.com/protolambda/ztyp/tree"
 	"github.com/stretchr/testify/require"
 )
 
@@ -91,8 +92,8 @@ func TestAttestedHeaderSSZRoot(t *testing.T) {
 
 	// Create witness (assignment)
 	var assignment circuit.BlockRootHasher
-	assignment.AssignBeaconHeader(slot, proposerIndex, parentRoot, stateRoot, bodyRoot)
-	assignment.AssignExpectedRoot(expectedRoot)
+	assignment.AssignPrvInput(slot, proposerIndex, parentRoot, stateRoot, bodyRoot)
+	assignment.AssignPubInput(expectedRoot)
 
 	// Test the circuit using gnark test framework
 	assert := gnark_test.NewAssert(t)
@@ -107,30 +108,12 @@ func TestAttestedHeaderProofGeneration(t *testing.T) {
 	data, err := os.ReadFile("lcupdate.json")
 	require.NoError(t, err, "Failed to read lcupdate.json")
 
-	var update LightClientUpdateJSON
+	var update LightClientUpdate
 	err = json.Unmarshal(data, &update)
 	require.NoError(t, err, "Failed to parse JSON")
+	beaconHeader := update.Data.AttestedHeader.Beacon
 
-	beacon := update.Data.AttestedHeader.Beacon
-
-	// Parse beacon header fields
-	slot, err := strconv.ParseUint(beacon.Slot, 10, 64)
-	require.NoError(t, err, "Failed to parse slot")
-
-	proposerIndex, err := strconv.ParseUint(beacon.ProposerIndex, 10, 64)
-	require.NoError(t, err, "Failed to parse proposer_index")
-
-	parentRoot, err := hexToBytes32(beacon.ParentRoot)
-	require.NoError(t, err, "Failed to parse parent_root")
-
-	stateRoot, err := hexToBytes32(beacon.StateRoot)
-	require.NoError(t, err, "Failed to parse state_root")
-
-	bodyRoot, err := hexToBytes32(beacon.BodyRoot)
-	require.NoError(t, err, "Failed to parse body_root")
-
-	expectedRoot, err := hexToBytes32("0x14d44edfc2367e5a117bffcaebc821a431cdd45ec2fcc6c1389fb45a90702b97")
-	require.NoError(t, err, "Failed to parse expected root")
+	computedRoot := beaconHeader.HashTreeRoot(tree.GetHashFn())
 
 	// Step 1: Compile the circuit
 	fmt.Println("Compiling circuit...")
@@ -147,8 +130,13 @@ func TestAttestedHeaderProofGeneration(t *testing.T) {
 
 	// Step 3: Create witness
 	var assignment circuit.BlockRootHasher
-	assignment.AssignBeaconHeader(slot, proposerIndex, parentRoot, stateRoot, bodyRoot)
-	assignment.AssignExpectedRoot(expectedRoot)
+	assignment.AssignPrvInput(
+		uint64(beaconHeader.Slot),
+		uint64(beaconHeader.ProposerIndex),
+		beaconHeader.ParentRoot,
+		beaconHeader.StateRoot,
+		beaconHeader.BodyRoot)
+	assignment.AssignPubInput(computedRoot)
 
 	witness, err := frontend.NewWitness(&assignment, ecc.BLS12_381.ScalarField())
 	require.NoError(t, err, "Failed to create witness")
@@ -165,15 +153,30 @@ func TestAttestedHeaderProofGeneration(t *testing.T) {
 
 	// Step 5: Verify proof
 	fmt.Println("Verifying proof...")
-	publicWitness, err := witness.Public()
-	require.NoError(t, err, "Failed to extract public witness")
 
+	wrongRoot, err := hexToBytes32("0x24d44edfc2367e5a117bffcaebc821a431cdd45ec2fcc6c1389fb45a90702b97")
+	expectedRoot, err := hexToBytes32("0x14d44edfc2367e5a117bffcaebc821a431cdd45ec2fcc6c1389fb45a90702b97")
+
+	var assignment0 circuit.BlockRootHasher
+
+	// wrong block root
+	assignment0.AssignPubInput(wrongRoot)
+	publicWitness, err := frontend.NewWitness(&assignment0, ecc.BLS12_381.ScalarField(), frontend.PublicOnly())
+	require.NoError(t, err, "Failed to extract public witness")
 	err = groth16.Verify(proof, vk, publicWitness)
-	require.NoError(t, err, "Failed to verify proof")
+	require.Error(t, err, "Failed to verify wrong proof")
+
+	// right block root
+	assignment0.AssignPubInput(expectedRoot)
+	publicWitness, err = frontend.NewWitness(&assignment0, ecc.BLS12_381.ScalarField(), frontend.PublicOnly())
+	require.NoError(t, err, "Failed to extract public witness")
+	err = groth16.Verify(proof, vk, publicWitness)
+	require.NoError(t, err, "Failed to verify expected proof")
+
 	fmt.Println("✓ Proof verified successfully!")
 
 	fmt.Println("\n=== Proof Generation and Verification Complete ===")
-	fmt.Printf("Attested Header Slot: %d\n", slot)
+	fmt.Printf("Attested Header Slot: %d\n", beaconHeader.Slot)
 	fmt.Printf("SSZ Root Hash: 0x%x\n", expectedRoot)
 	fmt.Println("The zero-knowledge proof confirms the correct computation of the SSZ root hash")
 	fmt.Println("without revealing the intermediate computation steps.")

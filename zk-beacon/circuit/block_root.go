@@ -148,8 +148,8 @@ func (h *BlockRootHasher) hashPair(api frontend.API, left, right [32]frontend.Va
 	return result
 }
 
-// AssignBeaconHeader assigns values to the beacon block header fields
-func (h *BlockRootHasher) AssignBeaconHeader(
+// AssignPrvInput assigns values to the beacon block header fields
+func (h *BlockRootHasher) AssignPrvInput(
 	slot uint64,
 	proposerIndex uint64,
 	parentRoot [32]byte,
@@ -166,8 +166,8 @@ func (h *BlockRootHasher) AssignBeaconHeader(
 	}
 }
 
-// AssignExpectedRoot assigns the expected SSZ root for verification
-func (h *BlockRootHasher) AssignExpectedRoot(root [32]byte) {
+// AssignPubInput assigns the expected SSZ root for verification
+func (h *BlockRootHasher) AssignPubInput(root [32]byte) {
 	for i := 0; i < 32; i++ {
 		h.ExpectedRoot[i] = root[i]
 	}

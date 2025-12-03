@@ -9,7 +9,6 @@ require (
 	github.com/consensys/gnark v0.14.0
 	github.com/consensys/gnark-crypto v0.19.2
 	github.com/ethereum/go-ethereum v1.16.5
-	github.com/herumi/bls-eth-go-binary v1.37.0
 	github.com/holiman/uint256 v1.3.2
 	github.com/protolambda/zrnt v0.34.1
 	github.com/protolambda/ztyp v0.2.2

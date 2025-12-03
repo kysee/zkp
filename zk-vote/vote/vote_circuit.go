@@ -1,6 +1,7 @@
 package vote
 
 import (
+	"fmt"
 	"math/big"
 
 	"github.com/consensys/gnark-crypto/ecc"
@@ -155,5 +156,7 @@ func CompileCircuit(depth int) error {
 	if ProvingKey, VerifyingKey, err = groth16.Setup(R1CS); err != nil {
 		return err
 	}
+
+	fmt.Printf("✓ Circuit compiled: %d constraints\n", R1CS.GetNbConstraints())
 	return nil
 }
