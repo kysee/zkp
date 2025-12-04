@@ -10,7 +10,7 @@ import (
 	"github.com/consensys/gnark/std/math/uints"
 )
 
-// SyncAggregateVerifier verifies Ethereum beacon chain sync committee signatures
+// SyncCommitteeVerifierCircuit verifies Ethereum beacon chain sync committee signatures
 //
 // This circuit:
 // 1. Computes the SSZ block root from beacon header fields
@@ -18,7 +18,7 @@ import (
 //
 // Note: Both hash-to-curve and public key aggregation are performed outside the circuit
 // to minimize the number of constraints.
-type SyncAggregateVerifier struct {
+type SyncCommitteeVerifierCircuit struct {
 	// Aggregated signature from sync_committee_signature
 	AggregatedSig sw_bls12381.G2Affine
 
@@ -40,7 +40,7 @@ type SyncAggregateVerifier struct {
 }
 
 // Define implements the circuit constraints
-func (c *SyncAggregateVerifier) Define(api frontend.API) error {
+func (c *SyncCommitteeVerifierCircuit) Define(api frontend.API) error {
 	// Step 1: Verify BLS signature using witness values
 	// Both AggregatedPubKey and SigningRootG2 are computed outside circuit
 	err := c.verifyBLSSignature(api)
@@ -60,7 +60,7 @@ func (c *SyncAggregateVerifier) Define(api frontend.API) error {
 // verifyBLSSignature verifies the BLS signature using pairing check
 // Verifies: e(pubkey, H(msg)) == e(G1, signature)
 // Or equivalently: e(pubkey, H(msg)) * e(-G1, signature) == 1
-func (c *SyncAggregateVerifier) verifyBLSSignature(api frontend.API) error {
+func (c *SyncCommitteeVerifierCircuit) verifyBLSSignature(api frontend.API) error {
 	// Create pairing instance
 	pairing, err := sw_bls12381.NewPairing(api)
 	if err != nil {
@@ -96,7 +96,7 @@ func (c *SyncAggregateVerifier) verifyBLSSignature(api frontend.API) error {
 
 // verifyMerkleProof verifies that NextPubKeysRoot is part of StateRoot
 // using the provided Merkle branch proof
-func (c *SyncAggregateVerifier) verifyMerkleProof(api frontend.API) error {
+func (c *SyncCommitteeVerifierCircuit) verifyMerkleProof(api frontend.API) error {
 	// NextSyncCommittee generalized index in Fulu BeaconState
 	// Position 23 (0-indexed) in 38-field structure
 	// Generalized index = 2^depth + position = 64 + 23 = 87 (0x57 in hex)

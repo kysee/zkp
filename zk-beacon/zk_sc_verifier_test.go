@@ -21,9 +21,9 @@ import (
 )
 
 var (
-	ccs constraint.ConstraintSystem
-	pk  groth16.ProvingKey
-	vk  groth16.VerifyingKey
+	scVerifierCCS constraint.ConstraintSystem
+	scVerifierPK  groth16.ProvingKey
+	scVerifierVK  groth16.VerifyingKey
 )
 
 func init() {
@@ -31,25 +31,67 @@ func init() {
 	// Compile circuit
 	var err error
 
-	fmt.Println("Compiling circuit...")
-	var circuitDef circuit.SyncAggregateVerifier
+	cssPath := "./.created/SyncCommitteeVerifierCircuit.css"
+	pkPath := "./.created/SyncCommitteeVerifierCircuit.pk"
+	vkPath := "./.created/SyncCommitteeVerifierCircuit.vk"
 
-	// Compile with BN254 scalar field (for emulated BLS12-381)
-	ccs, err = frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuitDef, frontend.IgnoreUnconstrainedInputs())
+	// Step 1: Circuit compile
+	fCss, err := os.Open(cssPath)
+	defer fCss.Close()
+
 	if err != nil {
-		panic(err)
+		fmt.Println("Compiling SyncCommitteeVerifierCircuit circuit...")
+		// Compile with BN254 scalar field (for emulated BLS12-381)
+		scVerifierCCS, err = frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit.SyncCommitteeVerifierCircuit{})
+		if err != nil {
+			panic(err)
+		}
+		fCss, _ = os.Create(cssPath)
+		_, _ = scVerifierCCS.WriteTo(fCss)
+	} else {
+		fmt.Println("Loading SyncCommitteeVerifierCircuit circuit...")
+
+		scVerifierCCS = groth16.NewCS(ecc.BN254)
+		_, err = scVerifierCCS.ReadFrom(fCss)
+		if err != nil {
+			panic(err)
+		}
 	}
-	fmt.Printf("✓ Circuit compiled: %d constraints\n", ccs.GetNbConstraints())
+	fmt.Printf("✓ Circuit has %d constraints\n", scVerifierCCS.GetNbConstraints())
 
 	// Step 2: Setup (generate proving and verifying keys)
-	fmt.Println("Generating proving and verifying keys...")
-	pk, vk, err = groth16.Setup(ccs)
-	if err != nil {
-		panic(err)
+	fpk, err0 := os.Open(pkPath)
+	defer fpk.Close()
+	fvk, err1 := os.Open(vkPath)
+	defer fvk.Close()
+
+	if err0 != nil || err1 != nil {
+		fmt.Println("Generating proving and verifying keys...")
+		scVerifierPK, scVerifierVK, err = groth16.Setup(scVerifierCCS)
+		if err != nil {
+			panic(err)
+		}
+
+		fpk, _ = os.Create(pkPath)
+		_, _ = scVerifierPK.WriteTo(fpk)
+
+		fvk, _ = os.Create(vkPath)
+		_, _ = scVerifierVK.WriteTo(fvk)
+	} else {
+		fmt.Println("Loading proving and verifying keys...")
+		scVerifierPK = groth16.NewProvingKey(ecc.BN254)
+		scVerifierVK = groth16.NewVerifyingKey(ecc.BN254)
+
+		if _, err := scVerifierPK.ReadFrom(fpk); err != nil {
+			panic(err)
+		}
+		if _, err := scVerifierVK.ReadFrom(fvk); err != nil {
+			panic(err)
+		}
 	}
 	fmt.Println("✓ Setup complete")
-
 }
+
 func TestSyncAggregateVerifier(t *testing.T) {
 	// Load light client update
 	var update LightClientUpdate
@@ -113,7 +155,7 @@ func createProof(t *testing.T, update *LightClientUpdate) groth16.Proof {
 	t.Logf("Beacon Header State root: %v", beaconHeader.StateRoot.String())
 
 	// Create assignment
-	var assignment circuit.SyncAggregateVerifier
+	var assignment circuit.SyncCommitteeVerifierCircuit
 
 	// Assign aggregated public key (computed outside circuit)
 	assignment.AggregatedPubKey = sw_bls12381.NewG1Affine(aggregatedPubKeyNative)
@@ -138,7 +180,7 @@ func createProof(t *testing.T, update *LightClientUpdate) groth16.Proof {
 	//
 	// Step 4: Generate proof
 	t.Log("Generating proof...")
-	proof, err := groth16.Prove(ccs, pk, fullWitness)
+	proof, err := groth16.Prove(scVerifierCCS, scVerifierPK, fullWitness)
 	require.NoError(t, err, "Failed to generate proof")
 	t.Log("✓ Proof generated")
 
@@ -191,7 +233,7 @@ func verifyProof(t *testing.T, proof groth16.Proof, update *LightClientUpdate) {
 	t.Logf("Beacon Header State root: %v", beaconHeader.StateRoot.String())
 
 	// Create assignment
-	var assignment circuit.SyncAggregateVerifier
+	var assignment circuit.SyncCommitteeVerifierCircuit
 
 	// Assign aggregated public key (computed outside circuit)
 	assignment.AggregatedPubKey = sw_bls12381.NewG1Affine(aggregatedPubKeyNative)
@@ -207,7 +249,7 @@ func verifyProof(t *testing.T, proof groth16.Proof, update *LightClientUpdate) {
 	publicWitness, err := frontend.NewWitness(&assignment, ecc.BN254.ScalarField(), frontend.PublicOnly())
 	require.NoError(t, err, "Failed to extract public witness")
 
-	err = groth16.Verify(proof, vk, publicWitness)
+	err = groth16.Verify(proof, scVerifierVK, publicWitness)
 	require.NoError(t, err, "Failed to verify proof")
 	t.Log("✓ Proof verified successfully!")
 
