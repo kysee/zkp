@@ -1,7 +1,6 @@
 package zk_beacon
 
 import (
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -15,6 +14,7 @@ import (
 	"github.com/consensys/gnark/frontend/cs/r1cs"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bls12381"
 	"github.com/kysee/zkp/zk-beacon/circuit"
+	"github.com/kysee/zkp/zk-beacon/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -23,6 +23,11 @@ var (
 	blsVerifierCCS constraint.ConstraintSystem
 	blsVerifierPK  groth16.ProvingKey
 	blsVerifierVK  groth16.VerifyingKey
+
+	// Prepare domain parameters
+	domainType                    = []byte{0x07, 0x00, 0x00, 0x00} // DOMAIN_SYNC_COMMITTEE
+	forkVersion                   = []byte{0x90, 0x00, 0x00, 0x75} // Fulu fork
+	genesisValidatorsRootBytes, _ = types.HexToBytes("0xd8ea171f3c94aea21ebc42a1ed61052acf3f9209c00e4efbaaddac09ed9b8078")
 )
 
 // init compiles the circuit and performs setup once for all tests
@@ -31,9 +36,9 @@ func init() {
 	// Compile circuit
 	var err error
 
-	cssPath := "./.created/BLSVerifierCircuit.css"
-	pkPath := "./.created/BLSVerifierCircuit.pk"
-	vkPath := "./.created/BLSVerifierCircuit.vk"
+	cssPath := "./.build/BLSVerifierCircuit.css"
+	pkPath := "./.build/BLSVerifierCircuit.pk"
+	vkPath := "./.build/BLSVerifierCircuit.vk"
 
 	// Step 1: Circuit compile
 	fCss, err := os.Open(cssPath)
@@ -92,10 +97,10 @@ func init() {
 
 func TestBLSVerifierCircuit(t *testing.T) {
 	// Load sync committee
-	syncCommitteeFile, err := os.ReadFile("./curr-sc.json")
+	syncCommitteeFile, err := os.ReadFile("data/curr-sc.json")
 	require.NoError(t, err, "Failed to read sync committee file")
 
-	var syncCommittee SyncCommittee
+	var syncCommittee types.SyncCommittee
 	err = json.Unmarshal(syncCommitteeFile, &syncCommittee)
 	require.NoError(t, err, "Failed to parse sync committee JSON")
 
@@ -103,20 +108,20 @@ func TestBLSVerifierCircuit(t *testing.T) {
 		syncCommittee.Period, len(syncCommittee.Pubkeys))
 
 	// Load light client update
-	updateFile, err := os.ReadFile("./lcupdate.json")
+	updateFile, err := os.ReadFile("data/lcupdate.json")
 	require.NoError(t, err, "Failed to read light client update file")
 
-	var update LightClientUpdate
+	var update types.LightClientUpdate
 	err = json.Unmarshal(updateFile, &update)
 	require.NoError(t, err, "Failed to parse light client update JSON")
 
 	t.Logf("Loaded light client update for slot %s", update.Data.AttestedHeader.Beacon.Slot)
 
 	// Parse sync committee bits
-	bits := parseSyncCommitteeBits(update.Data.SyncAggregate.SyncCommitteeBits)
+	bits := types.ParseSyncCommitteeBits(update.Data.SyncAggregate.SyncCommitteeBits)
 
 	// Aggregate public keys
-	aggPubkey, err := aggregatePublicKeys(syncCommittee.Pubkeys, bits)
+	aggPubkey, err := types.AggregatePublicKeys(syncCommittee.Pubkeys, bits)
 	require.NoError(t, err, "Failed to aggregate public keys")
 
 	// Parse signature (G2 point)
@@ -124,15 +129,6 @@ func TestBLSVerifierCircuit(t *testing.T) {
 	var signature bls12381.G2Affine
 	_, err = signature.SetBytes(sigBytes)
 	require.NoError(t, err, "Failed to deserialize signature")
-
-	// Compute block root for verification
-
-	// Prepare domain parameters
-	domainType := [4]byte{0x07, 0x00, 0x00, 0x00}  // DOMAIN_SYNC_COMMITTEE
-	forkVersion := [4]byte{0x90, 0x00, 0x00, 0x75} // Fulu fork
-	genesisValidatorsRootBytes, _ := hex.DecodeString("d8ea171f3c94aea21ebc42a1ed61052acf3f9209c00e4efbaaddac09ed9b8078")
-	var genesisValidatorsRoot [32]byte
-	copy(genesisValidatorsRoot[:], genesisValidatorsRootBytes)
 
 	// Create witness
 	witness := &circuit.BLSVerifierCircuit{}
@@ -147,13 +143,13 @@ func TestBLSVerifierCircuit(t *testing.T) {
 		witness.BodyRoot[i] = update.Data.AttestedHeader.Beacon.BodyRoot[i]
 	}
 
-	// Assign domain parameters
-	for i := 0; i < 4; i++ {
-		witness.DomainType[i] = domainType[i]
-		witness.ForkVersion[i] = forkVersion[i]
-	}
+	// Compute domain externally using types.ComputeDomain
+	domain, err := types.ComputeDomain(domainType, forkVersion, genesisValidatorsRootBytes)
+	require.NoError(t, err, "Failed to compute domain")
+
+	// Assign domain to witness
 	for i := 0; i < 32; i++ {
-		witness.GenesisValidatorsRoot[i] = genesisValidatorsRoot[i]
+		witness.Domain[i] = domain[i]
 	}
 
 	// Assign BLS signature components using gnark's conversion functions
@@ -186,26 +182,26 @@ func TestBLSVerifierCircuit(t *testing.T) {
 
 func TestBLSVerifierCircuitInvalidSignature(t *testing.T) {
 	// Load sync committee
-	syncCommitteeFile, err := os.ReadFile("./curr-sc.json")
+	syncCommitteeFile, err := os.ReadFile("data/curr-sc.json")
 	require.NoError(t, err, "Failed to read sync committee file")
 
-	var syncCommittee SyncCommittee
+	var syncCommittee types.SyncCommittee
 	err = json.Unmarshal(syncCommitteeFile, &syncCommittee)
 	require.NoError(t, err, "Failed to parse sync committee JSON")
 
 	// Load light client update
-	updateFile, err := os.ReadFile("./lcupdate.json")
+	updateFile, err := os.ReadFile("data/lcupdate.json")
 	require.NoError(t, err, "Failed to read light client update file")
 
-	var update LightClientUpdate
+	var update types.LightClientUpdate
 	err = json.Unmarshal(updateFile, &update)
 	require.NoError(t, err, "Failed to parse light client update JSON")
 
 	// Parse sync committee bits
-	bits := parseSyncCommitteeBits(update.Data.SyncAggregate.SyncCommitteeBits)
+	bits := types.ParseSyncCommitteeBits(update.Data.SyncAggregate.SyncCommitteeBits)
 
 	// Aggregate public keys
-	aggPubkey, err := aggregatePublicKeys(syncCommittee.Pubkeys, bits)
+	aggPubkey, err := types.AggregatePublicKeys(syncCommittee.Pubkeys, bits)
 	require.NoError(t, err, "Failed to aggregate public keys")
 
 	// Use INVALID signature (random G2 point)
@@ -219,15 +215,6 @@ func TestBLSVerifierCircuitInvalidSignature(t *testing.T) {
 	// Hash to G2
 	require.NoError(t, err, "Failed to hash to G2")
 
-	// Compute block root
-
-	// Prepare domain parameters
-	domainType := [4]byte{0x07, 0x00, 0x00, 0x00}
-	forkVersion := [4]byte{0x90, 0x00, 0x00, 0x75}
-	genesisValidatorsRootBytes, _ := hex.DecodeString("d8ea171f3c94aea21ebc42a1ed61052acf3f9209c00e4efbaaddac09ed9b8078")
-	var genesisValidatorsRoot [32]byte
-	copy(genesisValidatorsRoot[:], genesisValidatorsRootBytes)
-
 	// Create witness with invalid signature
 	witness := &circuit.BLSVerifierCircuit{}
 
@@ -240,20 +227,16 @@ func TestBLSVerifierCircuitInvalidSignature(t *testing.T) {
 		witness.BodyRoot[i] = update.Data.AttestedHeader.Beacon.BodyRoot[i]
 	}
 
-	for i := 0; i < 4; i++ {
-		witness.DomainType[i] = domainType[i]
-		witness.ForkVersion[i] = forkVersion[i]
-	}
+	// Compute domain externally
+	domain, err := types.ComputeDomain(domainType, forkVersion, genesisValidatorsRootBytes)
+	require.NoError(t, err, "Failed to compute domain")
 	for i := 0; i < 32; i++ {
-		witness.GenesisValidatorsRoot[i] = genesisValidatorsRoot[i]
+		witness.Domain[i] = domain[i]
 	}
 
 	// Assign INVALID signature
 	witness.AggregatedSig = sw_bls12381.NewG2Affine(invalidSignature)
 	witness.AggregatedPubKey = sw_bls12381.NewG1Affine(aggPubkey)
-
-	for i := 0; i < 32; i++ {
-	}
 
 	// Create witness
 	fullWitness, err := frontend.NewWitness(witness, ecc.BN254.ScalarField())
@@ -280,26 +263,26 @@ func TestBLSVerifierCircuitInvalidSignature(t *testing.T) {
 
 func TestBLSVerifierCircuitInvalidBlockRoot(t *testing.T) {
 	// Load sync committee
-	syncCommitteeFile, err := os.ReadFile("./curr-sc.json")
+	syncCommitteeFile, err := os.ReadFile("data/curr-sc.json")
 	require.NoError(t, err, "Failed to read sync committee file")
 
-	var syncCommittee SyncCommittee
+	var syncCommittee types.SyncCommittee
 	err = json.Unmarshal(syncCommitteeFile, &syncCommittee)
 	require.NoError(t, err, "Failed to parse sync committee JSON")
 
 	// Load light client update
-	updateFile, err := os.ReadFile("./lcupdate.json")
+	updateFile, err := os.ReadFile("data/lcupdate.json")
 	require.NoError(t, err, "Failed to read light client update file")
 
-	var update LightClientUpdate
+	var update types.LightClientUpdate
 	err = json.Unmarshal(updateFile, &update)
 	require.NoError(t, err, "Failed to parse light client update JSON")
 
 	// Parse sync committee bits
-	bits := parseSyncCommitteeBits(update.Data.SyncAggregate.SyncCommitteeBits)
+	bits := types.ParseSyncCommitteeBits(update.Data.SyncAggregate.SyncCommitteeBits)
 
 	// Aggregate public keys
-	aggPubkey, err := aggregatePublicKeys(syncCommittee.Pubkeys, bits)
+	aggPubkey, err := types.AggregatePublicKeys(syncCommittee.Pubkeys, bits)
 	require.NoError(t, err, "Failed to aggregate public keys")
 
 	// Parse signature
@@ -320,13 +303,6 @@ func TestBLSVerifierCircuitInvalidBlockRoot(t *testing.T) {
 		invalidBlockRoot[i] = 0xFF
 	}
 
-	// Prepare domain parameters
-	domainType := [4]byte{0x07, 0x00, 0x00, 0x00}
-	forkVersion := [4]byte{0x90, 0x00, 0x00, 0x75}
-	genesisValidatorsRootBytes, _ := hex.DecodeString("d8ea171f3c94aea21ebc42a1ed61052acf3f9209c00e4efbaaddac09ed9b8078")
-	var genesisValidatorsRoot [32]byte
-	copy(genesisValidatorsRoot[:], genesisValidatorsRootBytes)
-
 	// Create witness with invalid block root
 	witness := &circuit.BLSVerifierCircuit{}
 
@@ -336,23 +312,18 @@ func TestBLSVerifierCircuitInvalidBlockRoot(t *testing.T) {
 	for i := 0; i < 32; i++ {
 		witness.ParentRoot[i] = update.Data.AttestedHeader.Beacon.ParentRoot[i]
 		witness.StateRoot[i] = update.Data.AttestedHeader.Beacon.StateRoot[i]
-		witness.BodyRoot[i] = update.Data.AttestedHeader.Beacon.BodyRoot[i]
+		witness.BodyRoot[i] = invalidBlockRoot[i] //update.Data.AttestedHeader.Beacon.BodyRoot[i]
 	}
 
-	for i := 0; i < 4; i++ {
-		witness.DomainType[i] = domainType[i]
-		witness.ForkVersion[i] = forkVersion[i]
-	}
+	// Compute domain externally
+	domain, err := types.ComputeDomain(domainType, forkVersion, genesisValidatorsRootBytes)
+	require.NoError(t, err, "Failed to compute domain")
 	for i := 0; i < 32; i++ {
-		witness.GenesisValidatorsRoot[i] = genesisValidatorsRoot[i]
+		witness.Domain[i] = domain[i]
 	}
 
 	witness.AggregatedSig = sw_bls12381.NewG2Affine(signature)
 	witness.AggregatedPubKey = sw_bls12381.NewG1Affine(aggPubkey)
-
-	// Assign INVALID block root
-	for i := 0; i < 32; i++ {
-	}
 
 	// Create witness
 	fullWitness, err := frontend.NewWitness(witness, ecc.BN254.ScalarField())
@@ -368,30 +339,24 @@ func TestBLSVerifierCircuitInvalidBlockRoot(t *testing.T) {
 // Benchmark the circuit
 func BenchmarkBLSVerifierCircuit(b *testing.B) {
 	// Load test data
-	syncCommitteeFile, err := os.ReadFile("./curr-sc.json")
+	syncCommitteeFile, err := os.ReadFile("data/curr-sc.json")
 	if err != nil {
 		b.Skip("Test data not available")
 	}
 
-	var syncCommittee SyncCommittee
+	var syncCommittee types.SyncCommittee
 	json.Unmarshal(syncCommitteeFile, &syncCommittee)
 
-	updateFile, _ := os.ReadFile("./lcupdate.json")
-	var update LightClientUpdate
+	updateFile, _ := os.ReadFile("data/lcupdate.json")
+	var update types.LightClientUpdate
 	json.Unmarshal(updateFile, &update)
 
-	bits := parseSyncCommitteeBits(update.Data.SyncAggregate.SyncCommitteeBits)
-	aggPubkey, _ := aggregatePublicKeys(syncCommittee.Pubkeys, bits)
+	bits := types.ParseSyncCommitteeBits(update.Data.SyncAggregate.SyncCommitteeBits)
+	aggPubkey, _ := types.AggregatePublicKeys(syncCommittee.Pubkeys, bits)
 
 	sigBytes := update.Data.SyncAggregate.SyncCommitteeSignature[:]
 	var signature bls12381.G2Affine
 	signature.SetBytes(sigBytes)
-
-	domainType := [4]byte{0x07, 0x00, 0x00, 0x00}
-	forkVersion := [4]byte{0x90, 0x00, 0x00, 0x75}
-	genesisValidatorsRootBytes, _ := hex.DecodeString("d8ea171f3c94aea21ebc42a1ed61052acf3f9209c00e4efbaaddac09ed9b8078")
-	var genesisValidatorsRoot [32]byte
-	copy(genesisValidatorsRoot[:], genesisValidatorsRootBytes)
 
 	witness := &circuit.BLSVerifierCircuit{}
 	witness.Slot = uint64(update.Data.AttestedHeader.Beacon.Slot)
@@ -403,19 +368,14 @@ func BenchmarkBLSVerifierCircuit(b *testing.B) {
 		witness.BodyRoot[i] = update.Data.AttestedHeader.Beacon.BodyRoot[i]
 	}
 
-	for i := 0; i < 4; i++ {
-		witness.DomainType[i] = domainType[i]
-		witness.ForkVersion[i] = forkVersion[i]
-	}
+	// Compute domain externally
+	domain, _ := types.ComputeDomain(domainType, forkVersion, genesisValidatorsRootBytes)
 	for i := 0; i < 32; i++ {
-		witness.GenesisValidatorsRoot[i] = genesisValidatorsRoot[i]
+		witness.Domain[i] = domain[i]
 	}
 
 	witness.AggregatedSig = sw_bls12381.NewG2Affine(signature)
 	witness.AggregatedPubKey = sw_bls12381.NewG1Affine(aggPubkey)
-
-	for i := 0; i < 32; i++ {
-	}
 
 	// Create witness once
 	fullWitness, _ := frontend.NewWitness(witness, ecc.BN254.ScalarField())

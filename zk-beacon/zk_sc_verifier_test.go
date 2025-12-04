@@ -15,6 +15,7 @@ import (
 	"github.com/consensys/gnark/frontend/cs/r1cs"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bls12381"
 	"github.com/kysee/zkp/zk-beacon/circuit"
+	"github.com/kysee/zkp/zk-beacon/types"
 	"github.com/protolambda/zrnt/eth2/configs"
 	"github.com/protolambda/ztyp/tree"
 	"github.com/stretchr/testify/require"
@@ -31,9 +32,9 @@ func init() {
 	// Compile circuit
 	var err error
 
-	cssPath := "./.created/SyncCommitteeVerifierCircuit.css"
-	pkPath := "./.created/SyncCommitteeVerifierCircuit.pk"
-	vkPath := "./.created/SyncCommitteeVerifierCircuit.vk"
+	cssPath := "./.build/SyncCommitteeVerifierCircuit.css"
+	pkPath := "./.build/SyncCommitteeVerifierCircuit.pk"
+	vkPath := "./.build/SyncCommitteeVerifierCircuit.vk"
 
 	// Step 1: Circuit compile
 	fCss, err := os.Open(cssPath)
@@ -94,17 +95,17 @@ func init() {
 
 func TestSyncAggregateVerifier(t *testing.T) {
 	// Load light client update
-	var update LightClientUpdate
-	updateData, err := os.ReadFile("lcupdate.json")
-	require.NoError(t, err, "Failed to read lcupdate.json")
+	var update types.LightClientUpdate
+	updateData, err := os.ReadFile("data/lcupdate.json")
+	require.NoError(t, err, "Failed to read data/lcupdate.json")
 	err = json.Unmarshal(updateData, &update)
-	require.NoError(t, err, "Failed to parse lcupdate.json")
+	require.NoError(t, err, "Failed to parse data/lcupdate.json")
 
 	proof := createProof(t, &update)
 	verifyProof(t, proof, &update)
 }
 
-func createProof(t *testing.T, update *LightClientUpdate) groth16.Proof {
+func createProof(t *testing.T, update *types.LightClientUpdate) groth16.Proof {
 
 	t.Log("\n=== Sync Aggregate Prover Side  ===")
 
@@ -114,17 +115,17 @@ func createProof(t *testing.T, update *LightClientUpdate) groth16.Proof {
 	syncAggregate := update.Data.SyncAggregate
 
 	// Load current sync committee from curr-sc.json
-	var syncCommittee SyncCommittee
-	syncCommitteeData, err := os.ReadFile("curr-sc.json")
-	require.NoError(t, err, "Failed to read curr-sc.json")
+	var syncCommittee types.SyncCommittee
+	syncCommitteeData, err := os.ReadFile("data/curr-sc.json")
+	require.NoError(t, err, "Failed to read data/curr-sc.json")
 	err = json.Unmarshal(syncCommitteeData, &syncCommittee)
-	require.NoError(t, err, "Failed to parse curr-sc.json")
+	require.NoError(t, err, "Failed to parse data/curr-sc.json")
 
 	t.Logf("Loaded sync committee for period %s with %d pubkeys",
 		syncCommittee.Period, len(syncCommittee.Pubkeys))
 
 	// Parse participation bits
-	participationBits := parseSyncCommitteeBits(syncAggregate.SyncCommitteeBits)
+	participationBits := types.ParseSyncCommitteeBits(syncAggregate.SyncCommitteeBits)
 	// Parse aggregated signature (G2 point on BLS12-381)
 	var aggregatedSigNative bls12381.G2Affine
 	_, err = aggregatedSigNative.SetBytes(syncAggregate.SyncCommitteeSignature[:])
@@ -187,7 +188,7 @@ func createProof(t *testing.T, update *LightClientUpdate) groth16.Proof {
 	return proof
 }
 
-func verifyProof(t *testing.T, proof groth16.Proof, update *LightClientUpdate) {
+func verifyProof(t *testing.T, proof groth16.Proof, update *types.LightClientUpdate) {
 	t.Log("\n=== Sync Aggregate Verifier Side  ===")
 
 	// Beacon header from attested_header.beaconHeader
@@ -196,17 +197,17 @@ func verifyProof(t *testing.T, proof groth16.Proof, update *LightClientUpdate) {
 	syncAggregate := update.Data.SyncAggregate
 
 	// Load current sync committee from curr-sc.json
-	var syncCommittee SyncCommittee
-	syncCommitteeData, err := os.ReadFile("curr-sc.json")
-	require.NoError(t, err, "Failed to read curr-sc.json")
+	var syncCommittee types.SyncCommittee
+	syncCommitteeData, err := os.ReadFile("data/curr-sc.json")
+	require.NoError(t, err, "Failed to read data/curr-sc.json")
 	err = json.Unmarshal(syncCommitteeData, &syncCommittee)
-	require.NoError(t, err, "Failed to parse curr-sc.json")
+	require.NoError(t, err, "Failed to parse data/curr-sc.json")
 
 	t.Logf("Loaded sync committee for period %s with %d pubkeys",
 		syncCommittee.Period, len(syncCommittee.Pubkeys))
 
 	// Parse participation bits
-	participationBits := parseSyncCommitteeBits(syncAggregate.SyncCommitteeBits)
+	participationBits := types.ParseSyncCommitteeBits(syncAggregate.SyncCommitteeBits)
 	// Parse aggregated signature (G2 point on BLS12-381)
 	aggregatedPubKeyNative, participationCount, err := aggregatePublicKeysNative(syncCommittee.Pubkeys, participationBits)
 	require.NoError(t, err, "Failed to aggregate public keys")
@@ -267,7 +268,7 @@ func verifyProof(t *testing.T, proof groth16.Proof, update *LightClientUpdate) {
 func makeSigningRoot(blockRoot [32]byte) [32]byte {
 	domainType := [4]byte{0x07, 0x00, 0x00, 0x00}
 	forkVersion := [4]byte{0x90, 0x00, 0x00, 0x75}
-	genesisValidatorsRoot, _ := hexToBytes32("0xd8ea171f3c94aea21ebc42a1ed61052acf3f9209c00e4efbaaddac09ed9b8078")
+	genesisValidatorsRoot, _ := types.HexToBytes("0xd8ea171f3c94aea21ebc42a1ed61052acf3f9209c00e4efbaaddac09ed9b8078")
 
 	// Step 1: Compute fork version chunk (4 bytes + 28 zeros)
 	var forkVersionChunk [32]byte
@@ -309,7 +310,7 @@ func aggregatePublicKeysNative(pubkeys []string, bits []bool) (bls12381.G1Affine
 			continue
 		}
 
-		pubkeyBytes, err := hexToBytes(pubkeys[i])
+		pubkeyBytes, err := types.HexToBytes(pubkeys[i])
 		if err != nil {
 			return aggPubkey, 0, fmt.Errorf("failed to decode pubkey %d: %v", i, err)
 		}
