@@ -15,6 +15,8 @@ import (
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bls12381"
 	"github.com/kysee/zkp/zk-beacon/circuit"
 	"github.com/kysee/zkp/zk-beacon/types"
+	"github.com/protolambda/zrnt/eth2/configs"
+	"github.com/protolambda/ztyp/tree"
 	"github.com/stretchr/testify/require"
 )
 
@@ -36,13 +38,13 @@ func init() {
 	// Compile circuit
 	var err error
 
-	cssPath := "./.build/BLSVerifierCircuit.css"
+	ccsPath := "./.build/BLSVerifierCircuit.ccs"
 	pkPath := "./.build/BLSVerifierCircuit.pk"
 	vkPath := "./.build/BLSVerifierCircuit.vk"
 
 	// Step 1: Circuit compile
-	fCss, err := os.Open(cssPath)
-	defer fCss.Close()
+	fCcs, err := os.Open(ccsPath)
+	defer fCcs.Close()
 
 	if err != nil {
 		fmt.Println("Compiling BLSVerifierCircuit circuit...")
@@ -51,13 +53,13 @@ func init() {
 		if err != nil {
 			panic(err)
 		}
-		fCss, _ = os.Create(cssPath)
-		_, _ = blsVerifierCCS.WriteTo(fCss)
+		fCcs, _ = os.Create(ccsPath)
+		_, _ = blsVerifierCCS.WriteTo(fCcs)
 	} else {
 		fmt.Println("Loading BLSVerifierCircuit circuit...")
 
 		blsVerifierCCS = groth16.NewCS(ecc.BN254)
-		_, err = blsVerifierCCS.ReadFrom(fCss)
+		_, err = blsVerifierCCS.ReadFrom(fCcs)
 		if err != nil {
 			panic(err)
 		}
@@ -93,6 +95,28 @@ func init() {
 		}
 	}
 	fmt.Println("✓ Setup complete")
+}
+
+// assignNextSyncCommitteeToWitness computes next_sync_committee root and assigns it along with
+// next_sync_committee_branch to the witness
+func assignNextSyncCommitteeToWitness(
+	update *types.LightClientUpdate,
+	witness *circuit.BLSVerifierCircuit,
+) {
+	// Compute next_sync_committee root
+	nextSCRoot := update.Data.NextSyncCommittee.HashTreeRoot(configs.Mainnet, tree.GetHashFn())
+
+	// Assign next_sync_committee root (public input)
+	for i := 0; i < 32; i++ {
+		witness.NextSyncCommitteeRoot[i] = nextSCRoot[i]
+	}
+
+	// Assign next_sync_committee_branch (private input)
+	for i := 0; i < 6; i++ {
+		for j := 0; j < 32; j++ {
+			witness.NextSyncCommitteeBranch[i][j] = update.Data.NextSyncCommitteeBranch[i][j]
+		}
+	}
 }
 
 func TestBLSVerifierCircuit(t *testing.T) {
@@ -173,6 +197,9 @@ func TestBLSVerifierCircuit(t *testing.T) {
 
 	// Assign BLS signature using gnark's conversion function
 	witness.AggregatedSig = sw_bls12381.NewG2Affine(signature)
+
+	// Assign next_sync_committee root and branch to witness
+	assignNextSyncCommitteeToWitness(&update, witness)
 
 	// Test proof generation and verification
 	t.Run("Generate and Verify Proof", func(t *testing.T) {
@@ -267,6 +294,9 @@ func TestBLSVerifierCircuitInvalidSignature(t *testing.T) {
 
 	// Assign INVALID signature
 	witness.AggregatedSig = sw_bls12381.NewG2Affine(invalidSignature)
+
+	// Assign next_sync_committee root and branch to witness
+	assignNextSyncCommitteeToWitness(&update, witness)
 
 	// Create witness
 	fullWitness, err := frontend.NewWitness(witness, ecc.BN254.ScalarField())
@@ -367,6 +397,9 @@ func TestBLSVerifierCircuitInvalidBlockRoot(t *testing.T) {
 
 	witness.AggregatedSig = sw_bls12381.NewG2Affine(signature)
 
+	// Assign next_sync_committee root and branch to witness
+	assignNextSyncCommitteeToWitness(&update, witness)
+
 	// Create witness
 	fullWitness, err := frontend.NewWitness(witness, ecc.BN254.ScalarField())
 	require.NoError(t, err, "Failed to create witness")
@@ -437,6 +470,9 @@ func BenchmarkBLSVerifierCircuit(b *testing.B) {
 	}
 
 	witness.AggregatedSig = sw_bls12381.NewG2Affine(signature)
+
+	// Assign next_sync_committee root and branch to witness
+	assignNextSyncCommitteeToWitness(&update, witness)
 
 	// Create witness once
 	fullWitness, _ := frontend.NewWitness(witness, ecc.BN254.ScalarField())

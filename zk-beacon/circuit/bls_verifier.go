@@ -21,6 +21,7 @@ import (
 // 3. Computes signingRootG2 = hash-to-curve(signingRoot) IN-CIRCUIT
 // 4. Aggregates public keys based on sync_committee_bits IN-CIRCUIT
 // 5. Verifies BLS signature: e(aggregatedPubKey, H(signingRoot)) == e(G1, signature)
+// 6. Verifies next_sync_committee is included in StateRoot via SSZ Merkle proof
 //
 // Note: Public key aggregation is performed IN-CIRCUIT based on sync_committee_bits
 type BLSVerifierCircuit struct {
@@ -39,6 +40,10 @@ type BLSVerifierCircuit struct {
 	PubKeys           [512]sw_bls12381.G1Affine // All 512 sync committee public keys
 	SyncCommitteeBits [512]frontend.Variable    // Bitmap indicating which validators participated
 	AggregatedSig     sw_bls12381.G2Affine      // Aggregated signature
+
+	// Next sync committee Merkle proof data
+	NextSyncCommitteeRoot   [32]frontend.Variable    `gnark:",public"` // SSZ root of next_sync_committee (public input)
+	NextSyncCommitteeBranch [6][32]frontend.Variable // Merkle branch proving inclusion in StateRoot
 }
 
 // Define implements the circuit constraints
@@ -67,6 +72,12 @@ func (c *BLSVerifierCircuit) Define(api frontend.API) error {
 	err = c.verifyBLSSignature(api, aggregatedPubKey, signingRootG2)
 	if err != nil {
 		return fmt.Errorf("BLS signature verification failed: %w", err)
+	}
+
+	// Step 6: Verify next_sync_committee is included in StateRoot via SSZ Merkle proof
+	err = c.verifyNextSyncCommitteeMerkleProof(api)
+	if err != nil {
+		return fmt.Errorf("next_sync_committee Merkle proof verification failed: %w", err)
 	}
 
 	return nil
@@ -434,6 +445,55 @@ func (c *BLSVerifierCircuit) verifyBLSSignature(api frontend.API, aggregatedPubK
 	)
 	if err != nil {
 		return fmt.Errorf("pairing check failed: %w", err)
+	}
+
+	return nil
+}
+
+// verifyNextSyncCommitteeMerkleProof verifies that next_sync_committee root is included in StateRoot
+// using the SSZ Merkle proof (next_sync_committee_branch).
+//
+// The next_sync_committee field is at generalized index 87 in the BeaconState (Fulu).
+// Position 23 (0-indexed) in the BeaconState structure.
+// Generalized index = 2^depth + position = 64 + 23 = 87
+// Position 23 in binary: 0b10111
+//
+// For a Merkle branch of length 6, we verify by:
+// 1. Starting with leaf = NextSyncCommitteeRoot
+// 2. For each branch node, compute parent = hash(left, right) where left/right depends on the path
+// 3. Final result should equal StateRoot
+func (c *BLSVerifierCircuit) verifyNextSyncCommitteeMerkleProof(api frontend.API) error {
+	// NextSyncCommittee generalized index in Fulu BeaconState
+	// Position 23 (0-indexed) in BeaconState structure
+	// Generalized index = 2^depth + position = 64 + 23 = 87
+	//
+	// Extract the path from position 23 = 0b10111
+	// Path bits (LSB first): [1, 1, 1, 0, 1, 0]
+	// This means at each level: if bit is 1, current node is on the right; if 0, on the left
+	//
+	// The branch contains 6 sibling hashes needed to compute the path to the root
+	path := [6]int{1, 1, 1, 0, 1, 0}
+
+	// Start with the leaf (next_sync_committee root)
+	current := c.NextSyncCommitteeRoot
+
+	// Traverse up the tree using the branch
+	for i := 0; i < 6; i++ {
+		sibling := c.NextSyncCommitteeBranch[i]
+
+		// Compute parent hash based on path direction
+		if path[i] == 1 {
+			// Current node is on the right, sibling is on the left
+			current = c.hashPair(api, sibling, current)
+		} else {
+			// Current node is on the left, sibling is on the right
+			current = c.hashPair(api, current, sibling)
+		}
+	}
+
+	// The final computed root must equal the StateRoot from the BeaconBlockHeader
+	for i := 0; i < 32; i++ {
+		api.AssertIsEqual(current[i], c.StateRoot[i])
 	}
 
 	return nil

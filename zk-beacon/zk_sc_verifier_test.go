@@ -32,13 +32,13 @@ func init() {
 	// Compile circuit
 	var err error
 
-	cssPath := "./.build/SyncCommitteeVerifierCircuit.css"
+	ccsPath := "./.build/SyncCommitteeVerifierCircuit.ccs"
 	pkPath := "./.build/SyncCommitteeVerifierCircuit.pk"
 	vkPath := "./.build/SyncCommitteeVerifierCircuit.vk"
 
 	// Step 1: Circuit compile
-	fCss, err := os.Open(cssPath)
-	defer fCss.Close()
+	fCcs, err := os.Open(ccsPath)
+	defer fCcs.Close()
 
 	if err != nil {
 		fmt.Println("Compiling SyncCommitteeVerifierCircuit circuit...")
@@ -47,13 +47,13 @@ func init() {
 		if err != nil {
 			panic(err)
 		}
-		fCss, _ = os.Create(cssPath)
-		_, _ = scVerifierCCS.WriteTo(fCss)
+		fCcs, _ = os.Create(ccsPath)
+		_, _ = scVerifierCCS.WriteTo(fCcs)
 	} else {
 		fmt.Println("Loading SyncCommitteeVerifierCircuit circuit...")
 
 		scVerifierCCS = groth16.NewCS(ecc.BN254)
-		_, err = scVerifierCCS.ReadFrom(fCss)
+		_, err = scVerifierCCS.ReadFrom(fCcs)
 		if err != nil {
 			panic(err)
 		}
