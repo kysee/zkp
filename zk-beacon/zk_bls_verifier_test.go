@@ -120,15 +120,20 @@ func TestBLSVerifierCircuit(t *testing.T) {
 	// Parse sync committee bits
 	bits := types.ParseSyncCommitteeBits(update.Data.SyncAggregate.SyncCommitteeBits)
 
-	// Aggregate public keys
-	aggPubkey, err := types.AggregatePublicKeys(syncCommittee.Pubkeys, bits)
-	require.NoError(t, err, "Failed to aggregate public keys")
-
 	// Parse signature (G2 point)
 	sigBytes := update.Data.SyncAggregate.SyncCommitteeSignature[:]
 	var signature bls12381.G2Affine
 	_, err = signature.SetBytes(sigBytes)
 	require.NoError(t, err, "Failed to deserialize signature")
+
+	// Parse all 512 public keys
+	require.Equal(t, 512, len(syncCommittee.Pubkeys), "Expected 512 pubkeys")
+	var pubkeys [512]bls12381.G1Affine
+	for i := 0; i < 512; i++ {
+		pubkeyBytes := syncCommittee.Pubkeys[i][:]
+		_, err = pubkeys[i].SetBytes(pubkeyBytes)
+		require.NoError(t, err, "Failed to deserialize pubkey %d", i)
+	}
 
 	// Create witness
 	witness := &circuit.BLSVerifierCircuit{}
@@ -152,9 +157,22 @@ func TestBLSVerifierCircuit(t *testing.T) {
 		witness.Domain[i] = domain[i]
 	}
 
-	// Assign BLS signature components using gnark's conversion functions
+	// Assign all 512 public keys to witness
+	for i := 0; i < 512; i++ {
+		witness.PubKeys[i] = sw_bls12381.NewG1Affine(pubkeys[i])
+	}
+
+	// Assign sync committee bits (512 bits)
+	for i := 0; i < 512; i++ {
+		if bits[i] {
+			witness.SyncCommitteeBits[i] = 1
+		} else {
+			witness.SyncCommitteeBits[i] = 0
+		}
+	}
+
+	// Assign BLS signature using gnark's conversion function
 	witness.AggregatedSig = sw_bls12381.NewG2Affine(signature)
-	witness.AggregatedPubKey = sw_bls12381.NewG1Affine(aggPubkey)
 
 	// Test proof generation and verification
 	t.Run("Generate and Verify Proof", func(t *testing.T) {
@@ -200,20 +218,19 @@ func TestBLSVerifierCircuitInvalidSignature(t *testing.T) {
 	// Parse sync committee bits
 	bits := types.ParseSyncCommitteeBits(update.Data.SyncAggregate.SyncCommitteeBits)
 
-	// Aggregate public keys
-	aggPubkey, err := types.AggregatePublicKeys(syncCommittee.Pubkeys, bits)
-	require.NoError(t, err, "Failed to aggregate public keys")
+	// Parse all 512 public keys
+	require.Equal(t, 512, len(syncCommittee.Pubkeys), "Expected 512 pubkeys")
+	var pubkeys [512]bls12381.G1Affine
+	for i := 0; i < 512; i++ {
+		pubkeyBytes := syncCommittee.Pubkeys[i][:]
+		_, err = pubkeys[i].SetBytes(pubkeyBytes)
+		require.NoError(t, err, "Failed to deserialize pubkey %d", i)
+	}
 
 	// Use INVALID signature (random G2 point)
 	var invalidSignature bls12381.G2Affine
 	invalidSignature.X.SetRandom()
 	invalidSignature.Y.SetRandom()
-
-	// Compute signing root
-	require.NoError(t, err, "Failed to compute signing root")
-
-	// Hash to G2
-	require.NoError(t, err, "Failed to hash to G2")
 
 	// Create witness with invalid signature
 	witness := &circuit.BLSVerifierCircuit{}
@@ -234,9 +251,22 @@ func TestBLSVerifierCircuitInvalidSignature(t *testing.T) {
 		witness.Domain[i] = domain[i]
 	}
 
+	// Assign all 512 public keys to witness
+	for i := 0; i < 512; i++ {
+		witness.PubKeys[i] = sw_bls12381.NewG1Affine(pubkeys[i])
+	}
+
+	// Assign sync committee bits (512 bits)
+	for i := 0; i < 512; i++ {
+		if bits[i] {
+			witness.SyncCommitteeBits[i] = 1
+		} else {
+			witness.SyncCommitteeBits[i] = 0
+		}
+	}
+
 	// Assign INVALID signature
 	witness.AggregatedSig = sw_bls12381.NewG2Affine(invalidSignature)
-	witness.AggregatedPubKey = sw_bls12381.NewG1Affine(aggPubkey)
 
 	// Create witness
 	fullWitness, err := frontend.NewWitness(witness, ecc.BN254.ScalarField())
@@ -281,21 +311,20 @@ func TestBLSVerifierCircuitInvalidBlockRoot(t *testing.T) {
 	// Parse sync committee bits
 	bits := types.ParseSyncCommitteeBits(update.Data.SyncAggregate.SyncCommitteeBits)
 
-	// Aggregate public keys
-	aggPubkey, err := types.AggregatePublicKeys(syncCommittee.Pubkeys, bits)
-	require.NoError(t, err, "Failed to aggregate public keys")
+	// Parse all 512 public keys
+	require.Equal(t, 512, len(syncCommittee.Pubkeys), "Expected 512 pubkeys")
+	var pubkeys [512]bls12381.G1Affine
+	for i := 0; i < 512; i++ {
+		pubkeyBytes := syncCommittee.Pubkeys[i][:]
+		_, err = pubkeys[i].SetBytes(pubkeyBytes)
+		require.NoError(t, err, "Failed to deserialize pubkey %d", i)
+	}
 
 	// Parse signature
 	sigBytes := update.Data.SyncAggregate.SyncCommitteeSignature[:]
 	var signature bls12381.G2Affine
 	_, err = signature.SetBytes(sigBytes)
 	require.NoError(t, err, "Failed to deserialize signature")
-
-	// Compute signing root
-	require.NoError(t, err, "Failed to compute signing root")
-
-	// Hash to G2
-	require.NoError(t, err, "Failed to hash to G2")
 
 	// Use INVALID block root
 	var invalidBlockRoot [32]byte
@@ -322,8 +351,21 @@ func TestBLSVerifierCircuitInvalidBlockRoot(t *testing.T) {
 		witness.Domain[i] = domain[i]
 	}
 
+	// Assign all 512 public keys to witness
+	for i := 0; i < 512; i++ {
+		witness.PubKeys[i] = sw_bls12381.NewG1Affine(pubkeys[i])
+	}
+
+	// Assign sync committee bits (512 bits)
+	for i := 0; i < 512; i++ {
+		if bits[i] {
+			witness.SyncCommitteeBits[i] = 1
+		} else {
+			witness.SyncCommitteeBits[i] = 0
+		}
+	}
+
 	witness.AggregatedSig = sw_bls12381.NewG2Affine(signature)
-	witness.AggregatedPubKey = sw_bls12381.NewG1Affine(aggPubkey)
 
 	// Create witness
 	fullWitness, err := frontend.NewWitness(witness, ecc.BN254.ScalarField())
@@ -352,7 +394,13 @@ func BenchmarkBLSVerifierCircuit(b *testing.B) {
 	json.Unmarshal(updateFile, &update)
 
 	bits := types.ParseSyncCommitteeBits(update.Data.SyncAggregate.SyncCommitteeBits)
-	aggPubkey, _ := types.AggregatePublicKeys(syncCommittee.Pubkeys, bits)
+
+	// Parse all 512 public keys
+	var pubkeys [512]bls12381.G1Affine
+	for i := 0; i < 512; i++ {
+		pubkeyBytes := syncCommittee.Pubkeys[i][:]
+		_, _ = pubkeys[i].SetBytes(pubkeyBytes)
+	}
 
 	sigBytes := update.Data.SyncAggregate.SyncCommitteeSignature[:]
 	var signature bls12381.G2Affine
@@ -374,8 +422,21 @@ func BenchmarkBLSVerifierCircuit(b *testing.B) {
 		witness.Domain[i] = domain[i]
 	}
 
+	// Assign all 512 public keys to witness
+	for i := 0; i < 512; i++ {
+		witness.PubKeys[i] = sw_bls12381.NewG1Affine(pubkeys[i])
+	}
+
+	// Assign sync committee bits (512 bits)
+	for i := 0; i < 512; i++ {
+		if bits[i] {
+			witness.SyncCommitteeBits[i] = 1
+		} else {
+			witness.SyncCommitteeBits[i] = 0
+		}
+	}
+
 	witness.AggregatedSig = sw_bls12381.NewG2Affine(signature)
-	witness.AggregatedPubKey = sw_bls12381.NewG1Affine(aggPubkey)
 
 	// Create witness once
 	fullWitness, _ := frontend.NewWitness(witness, ecc.BN254.ScalarField())

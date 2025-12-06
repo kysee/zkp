@@ -19,10 +19,10 @@ import (
 // 1. Computes blockRoot from BeaconBlockHeader fields
 // 2. Computes signingRoot = hash(blockRoot, domain)
 // 3. Computes signingRootG2 = hash-to-curve(signingRoot) IN-CIRCUIT
-// 4. Verifies BLS signature: e(pubkey, H(signingRoot)) == e(G1, signature)
+// 4. Aggregates public keys based on sync_committee_bits IN-CIRCUIT
+// 5. Verifies BLS signature: e(aggregatedPubKey, H(signingRoot)) == e(G1, signature)
 //
-// Note: Public key aggregation is performed outside the circuit,
-// but hash-to-curve is computed IN-CIRCUIT.
+// Note: Public key aggregation is performed IN-CIRCUIT based on sync_committee_bits
 type BLSVerifierCircuit struct {
 	// BeaconBlockHeader fields (private inputs)
 	Slot          frontend.Variable     // uint64
@@ -35,11 +35,10 @@ type BLSVerifierCircuit struct {
 	// Computed externally as: domain = domain_type || fork_data_root[:28]
 	Domain [32]frontend.Variable // bytes32
 
-	// Aggregated signature (private input)
-	AggregatedSig sw_bls12381.G2Affine
-
-	// Public inputs for verification
-	AggregatedPubKey sw_bls12381.G1Affine `gnark:",public"` // Aggregated validator public keys
+	// Sync committee data (private inputs)
+	PubKeys           [512]sw_bls12381.G1Affine // All 512 sync committee public keys
+	SyncCommitteeBits [512]frontend.Variable    // Bitmap indicating which validators participated
+	AggregatedSig     sw_bls12381.G2Affine      // Aggregated signature
 }
 
 // Define implements the circuit constraints
@@ -56,10 +55,16 @@ func (c *BLSVerifierCircuit) Define(api frontend.API) error {
 		return fmt.Errorf("hash-to-curve failed: %w", err)
 	}
 
-	// Step 4: Verify BLS signature against the computed signingRootG2
+	// Step 4: Aggregate public keys based on sync_committee_bits IN-CIRCUIT
+	aggregatedPubKey, err := c.aggregatePubKeys(api)
+	if err != nil {
+		return fmt.Errorf("public key aggregation failed: %w", err)
+	}
+
+	// Step 5: Verify BLS signature against the computed signingRootG2
 	// If the BeaconBlockHeader fields are incorrect, the blockRoot will be wrong,
 	// leading to wrong signingRoot and signingRootG2, which will fail signature verification
-	err = c.verifyBLSSignature(api, signingRootG2)
+	err = c.verifyBLSSignature(api, aggregatedPubKey, signingRootG2)
 	if err != nil {
 		return fmt.Errorf("BLS signature verification failed: %w", err)
 	}
@@ -355,10 +360,52 @@ func (c *BLSVerifierCircuit) bytesToBLS12381FpMod(
 	return res, nil
 }
 
+// aggregatePubKeys aggregates public keys based on sync_committee_bits
+// Returns the aggregated public key for validators who participated in signing
+func (c *BLSVerifierCircuit) aggregatePubKeys(api frontend.API) (*sw_bls12381.G1Affine, error) {
+	// Create curve for G1 operations
+	curve, err := sw_emulated.New[sw_bls12381.BaseField, sw_bls12381.ScalarField](api, sw_emulated.GetBLS12381Params())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create curve: %w", err)
+	}
+
+	// Find the first validator that participated to initialize the accumulator
+	accumulator := &c.PubKeys[0]
+	hasInitialized := c.SyncCommitteeBits[0]
+
+	// Process remaining validators
+	for i := 1; i < 512; i++ {
+		bit := c.SyncCommitteeBits[i]
+
+		// If we haven't initialized yet and this bit is set, use this as initial value
+		isFirstSelected := api.And(api.IsZero(hasInitialized), bit)
+
+		// If hasInitialized is true and bit is set, we should add
+		shouldAdd := api.And(hasInitialized, bit)
+
+		// Compute sum = accumulator + pubkey[i]
+		sum := curve.Add(accumulator, &c.PubKeys[i])
+
+		// If shouldAdd, use sum; otherwise keep accumulator
+		tempResult := curve.Select(shouldAdd, sum, accumulator)
+
+		// If this is the first selected key, replace with pubkey[i]; otherwise use tempResult
+		accumulator = curve.Select(isFirstSelected, &c.PubKeys[i], tempResult)
+
+		// Update hasInitialized flag
+		hasInitialized = api.Or(hasInitialized, bit)
+	}
+
+	// Ensure at least one validator participated
+	api.AssertIsEqual(hasInitialized, 1)
+
+	return accumulator, nil
+}
+
 // verifyBLSSignature verifies the BLS signature using pairing check
 // Verifies: e(pubkey, H(msg)) == e(G1, signature)
 // Or equivalently: e(pubkey, H(msg)) * e(-G1, signature) == 1
-func (c *BLSVerifierCircuit) verifyBLSSignature(api frontend.API, signingRootG2 *sw_bls12381.G2Affine) error {
+func (c *BLSVerifierCircuit) verifyBLSSignature(api frontend.API, aggregatedPubKey *sw_bls12381.G1Affine, signingRootG2 *sw_bls12381.G2Affine) error {
 	// Create pairing instance
 	pairing, err := sw_bls12381.NewPairing(api)
 	if err != nil {
@@ -366,7 +413,7 @@ func (c *BLSVerifierCircuit) verifyBLSSignature(api frontend.API, signingRootG2 
 	}
 
 	// Verify inputs are in correct subgroups
-	pairing.AssertIsOnG1(&c.AggregatedPubKey)
+	pairing.AssertIsOnG1(aggregatedPubKey)
 	pairing.AssertIsOnG2(signingRootG2)
 	pairing.AssertIsOnG2(&c.AggregatedSig)
 
@@ -382,7 +429,7 @@ func (c *BLSVerifierCircuit) verifyBLSSignature(api frontend.API, signingRootG2 
 
 	// Pairing check: e(pubkey, H(msg)) * e(-G1, signature) == 1
 	err = pairing.PairingCheck(
-		[]*sw_bls12381.G1Affine{&c.AggregatedPubKey, negG1Gen},
+		[]*sw_bls12381.G1Affine{aggregatedPubKey, negG1Gen},
 		[]*sw_bls12381.G2Affine{signingRootG2, &c.AggregatedSig},
 	)
 	if err != nil {

@@ -10,8 +10,8 @@ import (
 )
 
 type SyncCommittee struct {
-	Period  string   `json:"period"`
-	Pubkeys []string `json:"pubkeys"`
+	Period  string                 `json:"period"`
+	Pubkeys []zrntcommon.BLSPubkey `json:"pubkeys"`
 }
 
 type SyncAggregate struct {
@@ -66,7 +66,7 @@ func ParseSyncCommitteeBits(bitsBytes []byte) []bool {
 }
 
 // Aggregate public keys using gnark-crypto (native BLS12-381)
-func AggregatePublicKeys(pubkeys []string, bits []bool) (bls12381.G1Affine, error) {
+func AggregatePublicKeys(pubkeys []zrntcommon.BLSPubkey, bits []bool) (bls12381.G1Affine, int, error) {
 	var aggPubkey bls12381.G1Affine
 	aggPubkey.SetInfinity() // Start with identity element
 
@@ -75,16 +75,10 @@ func AggregatePublicKeys(pubkeys []string, bits []bool) (bls12381.G1Affine, erro
 		if !participate || i >= len(pubkeys) {
 			continue
 		}
-
-		pubkeyBytes, err := HexToBytes(pubkeys[i])
-		if err != nil {
-			return aggPubkey, fmt.Errorf("failed to decode pubkey %d: %v", i, err)
-		}
-
 		var pubkey bls12381.G1Affine
-		_, err = pubkey.SetBytes(pubkeyBytes)
+		_, err := pubkey.SetBytes(pubkeys[i][:])
 		if err != nil {
-			return aggPubkey, fmt.Errorf("failed to deserialize pubkey %d: %v", i, err)
+			return aggPubkey, 0, fmt.Errorf("failed to deserialize pubkey %d: %v", i, err)
 		}
 
 		// Add to aggregate
@@ -93,10 +87,10 @@ func AggregatePublicKeys(pubkeys []string, bits []bool) (bls12381.G1Affine, erro
 	}
 
 	if count == 0 {
-		return aggPubkey, fmt.Errorf("no public keys to aggregate")
+		return aggPubkey, 0, fmt.Errorf("no public keys to aggregate")
 	}
 
-	return aggPubkey, nil
+	return aggPubkey, count, nil
 }
 
 // ComputeDomain computes the BLS domain for sync committee signatures

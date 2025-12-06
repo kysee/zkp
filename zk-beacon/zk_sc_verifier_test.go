@@ -131,7 +131,7 @@ func createProof(t *testing.T, update *types.LightClientUpdate) groth16.Proof {
 	_, err = aggregatedSigNative.SetBytes(syncAggregate.SyncCommitteeSignature[:])
 	require.NoError(t, err, "Failed to deserialize aggregated signature")
 	// Aggregate public keys outside the circuit
-	aggregatedPubKeyNative, participationCount, err := aggregatePublicKeysNative(syncCommittee.Pubkeys, participationBits)
+	aggregatedPubKeyNative, participationCount, err := types.AggregatePublicKeys(syncCommittee.Pubkeys, participationBits)
 	require.NoError(t, err, "Failed to aggregate public keys")
 	t.Logf("Participation: %d / 512 validators", participationCount)
 
@@ -209,7 +209,7 @@ func verifyProof(t *testing.T, proof groth16.Proof, update *types.LightClientUpd
 	// Parse participation bits
 	participationBits := types.ParseSyncCommitteeBits(syncAggregate.SyncCommitteeBits)
 	// Parse aggregated signature (G2 point on BLS12-381)
-	aggregatedPubKeyNative, participationCount, err := aggregatePublicKeysNative(syncCommittee.Pubkeys, participationBits)
+	aggregatedPubKeyNative, participationCount, err := types.AggregatePublicKeys(syncCommittee.Pubkeys, participationBits)
 	require.NoError(t, err, "Failed to aggregate public keys")
 	t.Logf("Participation: %d / 512 validators", participationCount)
 
@@ -296,39 +296,4 @@ func sha256Hash(left, right []byte) [32]byte {
 	var result [32]byte
 	copy(result[:], h.Sum(nil))
 	return result
-}
-
-// aggregatePublicKeysNative aggregates public keys based on participation bits
-// Returns the aggregated public key and the number of participating validators
-func aggregatePublicKeysNative(pubkeys []string, bits []bool) (bls12381.G1Affine, int, error) {
-	var aggPubkey bls12381.G1Affine
-	aggPubkey.SetInfinity() // Start with identity element
-
-	count := 0
-	for i, participate := range bits {
-		if !participate || i >= len(pubkeys) {
-			continue
-		}
-
-		pubkeyBytes, err := types.HexToBytes(pubkeys[i])
-		if err != nil {
-			return aggPubkey, 0, fmt.Errorf("failed to decode pubkey %d: %v", i, err)
-		}
-
-		var pubkey bls12381.G1Affine
-		_, err = pubkey.SetBytes(pubkeyBytes)
-		if err != nil {
-			return aggPubkey, 0, fmt.Errorf("failed to deserialize pubkey %d: %v", i, err)
-		}
-
-		// Add to aggregate
-		aggPubkey.Add(&aggPubkey, &pubkey)
-		count++
-	}
-
-	if count == 0 {
-		return aggPubkey, 0, fmt.Errorf("no public keys to aggregate")
-	}
-
-	return aggPubkey, count, nil
 }

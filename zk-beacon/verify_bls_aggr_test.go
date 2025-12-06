@@ -48,7 +48,7 @@ func verifySyncAggregate(syncCommittee *types.SyncCommittee, update *types.Light
 	// Parse sync committee bits
 	bits := types.ParseSyncCommitteeBits(update.Data.SyncAggregate.SyncCommitteeBits)
 	// Aggregate public keys using gnark-crypto
-	aggPubkey, err := types.AggregatePublicKeys(syncCommittee.Pubkeys, bits)
+	aggPubkey, _, err := types.AggregatePublicKeys(syncCommittee.Pubkeys, bits)
 	if err != nil {
 		return fmt.Errorf("failed to aggregate public keys: %v", err)
 	}
