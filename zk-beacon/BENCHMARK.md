@@ -1,3 +1,27 @@
+## 12.06 
+
+The aggregation of curr_sync_committee pubkeys is removed from the BLSVerifierCircuit.
+
+### Constraints
+
+| Circuit | Constraints |
+| --- | --- |
+| BLSVerifierCircuit | 2491635 |
+| SyncCommitteeVerifierCircuit | 1249667 |
+
+### Benchmark
+
+goos: darwin
+goarch: arm64
+pkg: github.com/kysee/zkp/zk-beacon
+cpu: Apple M1 Max
+BenchmarkBLSVerifierCircuit
+
+| Operation | Time                |
+| --- |---------------------|
+| ProofGeneration | 10317260292 ns/op |
+| ProofVerification | 1772195 ns/op     |
+
 ## 12.05 (2)
 
 Add to verify that the state_root includes the next_sync_committee.
