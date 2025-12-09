@@ -1,6 +1,6 @@
 ## 12.06 
 
-The aggregation of curr_sync_committee pubkeys is removed from the BLSVerifierCircuit.
+Remove the aggregation of curr_sync_committee pubkeys from the BLSVerifierCircuit.
 
 ### Constraints
 
