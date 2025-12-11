@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/consensys/gnark-crypto/ecc/bls12-381"
+	gnarkHash "github.com/consensys/gnark-crypto/hash"
 	zrntaltair "github.com/protolambda/zrnt/eth2/beacon/altair"
 	zrntcommon "github.com/protolambda/zrnt/eth2/beacon/common"
 )
@@ -91,6 +92,55 @@ func AggregatePublicKeys(pubkeys []zrntcommon.BLSPubkey, bits []bool) (bls12381.
 	}
 
 	return aggPubkey, count, nil
+}
+
+// ComputeSyncCommitteePubKeysCommitment computes a SHA256 commitment to the sync committee public keys
+// This matches the commitment computation in the circuit
+//
+//	func ComputeSyncCommitteePubKeysCommitment(pubkeys []bls12381.G1Affine) [32]byte {
+//		hasher := sha256.New()
+//
+//		// Hash each public key's X coordinate (48 bytes in compressed form)
+//		for i := 0; i < 512; i++ {
+//			// Serialize the G1 point to compressed form (48 bytes)
+//			// For the circuit, we only hash X coordinates
+//			pubkeyBytes := pubkeys[i].X.Bytes()
+//			hasher.Write(pubkeyBytes[:])
+//		}
+//
+//		var commitment [32]byte
+//		copy(commitment[:], hasher.Sum(nil))
+//		return commitment
+//	}
+func ComputeSyncCommitteePubKeysCommitment(pubkeys []bls12381.G1Affine) [32]byte {
+	hasher := gnarkHash.POSEIDON2_BN254.New()
+
+	// Hash only the first limb (Limbs[0]) of each X coordinate for efficiency
+	// This matches the circuit which hashes only Limbs[0]
+	for i := 0; i < 512; i++ {
+		// Get the X coordinate as bytes (big-endian, 48 bytes = 384 bits)
+		xBytes := pubkeys[i].X.Bytes()
+
+		// Extract only the first 8 bytes (corresponds to Limbs[0] in little-endian representation)
+		// BLS12-381 field elements are 6 limbs × 64 bits = 384 bits
+		// In big-endian byte representation, the last 8 bytes correspond to Limbs[0]
+
+		//fmt.Printf("prover: pubkeys[%d].X.Limbs=[", i)
+
+		// use only limbs[0], limbs[1]
+		for j := 5; j >= 4; j-- {
+			input := xBytes[j*8 : j*8+8]
+			hasher.Write(input)
+
+			//fmt.Printf(new(big.Int).SetBytes(input).String() + ",")
+		}
+		//fmt.Printf("]\n")
+
+	}
+
+	var commitment [32]byte
+	copy(commitment[:], hasher.Sum(nil))
+	return commitment
 }
 
 // ComputeDomain computes the BLS domain for sync committee signatures

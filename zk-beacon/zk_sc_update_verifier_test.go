@@ -8,15 +8,19 @@ import (
 
 	"github.com/consensys/gnark-crypto/ecc"
 	bls12381 "github.com/consensys/gnark-crypto/ecc/bls12-381"
+	"github.com/consensys/gnark/backend"
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/constraint"
+	"github.com/consensys/gnark/constraint/solver"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/cs/r1cs"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bls12381"
+	gnark_test "github.com/consensys/gnark/test"
 	"github.com/kysee/zkp/zk-beacon/circuit"
 	"github.com/kysee/zkp/zk-beacon/types"
 	"github.com/protolambda/zrnt/eth2/configs"
 	"github.com/protolambda/ztyp/tree"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
 
@@ -30,33 +34,39 @@ var (
 	domainType                    = []byte{0x07, 0x00, 0x00, 0x00} // DOMAIN_SYNC_COMMITTEE
 	forkVersion                   = []byte{0x90, 0x00, 0x00, 0x75} // Fulu fork
 	genesisValidatorsRootBytes, _ = types.HexToBytes("0xd8ea171f3c94aea21ebc42a1ed61052acf3f9209c00e4efbaaddac09ed9b8078")
+
+	gnarkLogger = zerolog.New(os.Stdout).Level(zerolog.DebugLevel).With().Timestamp().Logger()
 )
 
-// init compiles the circuit and performs setup once for all tests
-func init() {
+// Compile the circuit and performs setup once for all tests
+func onceSetupCircuit() {
+	if blsVerifierCCS != nil {
+		fmt.Println("Circuit already compiled and setup")
+		return
+	}
 	//
 	// Compile circuit
 	var err error
 
-	ccsPath := "./.build/BLSVerifierCircuit.ccs"
-	pkPath := "./.build/BLSVerifierCircuit.pk"
-	vkPath := "./.build/BLSVerifierCircuit.vk"
+	ccsPath := "./.build/ScUpdateVerifierCircuit.ccs"
+	pkPath := "./.build/ScUpdateVerifierCircuit.pk"
+	vkPath := "./.build/ScUpdateVerifierCircuit.vk"
 
 	// Step 1: Circuit compile
 	fCcs, err := os.Open(ccsPath)
 	defer fCcs.Close()
 
 	if err != nil {
-		fmt.Println("Compiling BLSVerifierCircuit circuit...")
+		fmt.Println("Compiling ScUpdateVerifierCircuit circuit...")
 		// Compile with BN254 scalar field (for emulated BLS12-381)
-		blsVerifierCCS, err = frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit.BLSVerifierCircuit{})
+		blsVerifierCCS, err = frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit.ScUpdateVerifierCircuit{})
 		if err != nil {
 			panic(err)
 		}
 		fCcs, _ = os.Create(ccsPath)
 		_, _ = blsVerifierCCS.WriteTo(fCcs)
 	} else {
-		fmt.Println("Loading BLSVerifierCircuit circuit...")
+		fmt.Println("Loading ScUpdateVerifierCircuit circuit...")
 
 		blsVerifierCCS = groth16.NewCS(ecc.BN254)
 		_, err = blsVerifierCCS.ReadFrom(fCcs)
@@ -64,7 +74,7 @@ func init() {
 			panic(err)
 		}
 	}
-	fmt.Printf("✓ Circuit has %d constraints\n", blsVerifierCCS.GetNbConstraints())
+	fmt.Printf("✓ Circuit has %d constraints, %d public inputs\n", blsVerifierCCS.GetNbConstraints(), blsVerifierCCS.GetNbPublicVariables())
 
 	// Step 2: Setup (generate proving and verifying keys)
 	fpk, err0 := os.Open(pkPath)
@@ -101,7 +111,7 @@ func init() {
 // next_sync_committee_branch to the witness
 func assignNextSyncCommitteeToWitness(
 	update *types.LightClientUpdate,
-	witness *circuit.BLSVerifierCircuit,
+	witness *circuit.ScUpdateVerifierCircuit,
 ) {
 	// Compute next_sync_committee root
 	nextSCRoot := update.Data.NextSyncCommittee.HashTreeRoot(configs.Mainnet, tree.GetHashFn())
@@ -119,7 +129,7 @@ func assignNextSyncCommitteeToWitness(
 	}
 }
 
-func TestBLSVerifierCircuit(t *testing.T) {
+func TestScUpdateVerifierCircuit_IsSolved(t *testing.T) {
 	// Load sync committee
 	syncCommitteeFile, err := os.ReadFile("data/curr-sc.json")
 	require.NoError(t, err, "Failed to read sync committee file")
@@ -150,7 +160,7 @@ func TestBLSVerifierCircuit(t *testing.T) {
 	_, err = signature.SetBytes(sigBytes)
 	require.NoError(t, err, "Failed to deserialize signature")
 
-	// Parse all 512 public keys and aggregate them based on sync_committee_bits
+	// Parse all 512 public keys
 	require.Equal(t, 512, len(syncCommittee.Pubkeys), "Expected 512 pubkeys")
 	var pubkeys [512]bls12381.G1Affine
 	for i := 0; i < 512; i++ {
@@ -159,17 +169,8 @@ func TestBLSVerifierCircuit(t *testing.T) {
 		require.NoError(t, err, "Failed to deserialize pubkey %d", i)
 	}
 
-	// Aggregate public keys based on sync_committee_bits (OUTSIDE the circuit)
-	var aggregatedPubKey bls12381.G1Affine
-	aggregatedPubKey.Set(&bls12381.G1Affine{}) // Initialize to identity
-	for i := 0; i < 512; i++ {
-		if bits[i] {
-			aggregatedPubKey.Add(&aggregatedPubKey, &pubkeys[i])
-		}
-	}
-
 	// Create witness
-	witness := &circuit.BLSVerifierCircuit{}
+	witness := &circuit.ScUpdateVerifierCircuit{}
 
 	// Assign BeaconBlockHeader fields
 	witness.Slot = uint64(update.Data.AttestedHeader.Beacon.Slot)
@@ -190,8 +191,126 @@ func TestBLSVerifierCircuit(t *testing.T) {
 		witness.Domain[i] = domain[i]
 	}
 
-	// Assign aggregated public key (PUBLIC INPUT)
-	witness.AggregatedPubKey = sw_bls12381.NewG1Affine(aggregatedPubKey)
+	// Assign sync committee public keys (PRIVATE INPUT)
+	for i := 0; i < 512; i++ {
+		witness.SyncCommitteePubKeys[i] = sw_bls12381.NewG1Affine(pubkeys[i])
+	}
+
+	// Compute commitment to sync committee public keys (PUBLIC INPUT)
+	commitment := types.ComputeSyncCommitteePubKeysCommitment(pubkeys[:])
+	witness.SyncCommitteePubKeysCommit = commitment[:]
+	//for i := 0; i < 32; i++ {
+	//	witness.SyncCommitteePubKeysCommit[i] = commitment[i]
+	//}
+
+	// Assign sync committee bits (PUBLIC INPUT)
+	for i := 0; i < 512; i++ {
+		if bits[i] {
+			witness.SyncCommitteeBits[i] = 1
+		} else {
+			witness.SyncCommitteeBits[i] = 0
+		}
+	}
+
+	// Assign BLS signature using gnark's conversion function
+	witness.AggregatedSig = sw_bls12381.NewG2Affine(signature)
+
+	// Assign next_sync_committee root and branch to witness
+	assignNextSyncCommitteeToWitness(&update, witness)
+
+	// Test the circuit using gnark test framework
+	assert := gnark_test.NewAssert(t)
+	err = gnark_test.IsSolved(&circuit.ScUpdateVerifierCircuit{}, witness, ecc.BN254.ScalarField())
+	assert.NoError(err, "Circuit constraints should be satisfied")
+
+	t.Logf("✓ Proof solving SUCCEEDED!")
+
+}
+
+func TestScUpdateVerifierCircuit(t *testing.T) {
+	onceSetupCircuit()
+
+	// Load sync committee
+	syncCommitteeFile, err := os.ReadFile("data/curr-sc.json")
+	require.NoError(t, err, "Failed to read sync committee file")
+
+	var syncCommittee types.SyncCommittee
+	err = json.Unmarshal(syncCommitteeFile, &syncCommittee)
+	require.NoError(t, err, "Failed to parse sync committee JSON")
+
+	t.Logf("Loaded sync committee for period %s with %d pubkeys",
+		syncCommittee.Period, len(syncCommittee.Pubkeys))
+
+	// Load light client update
+	updateFile, err := os.ReadFile("data/lcupdate.json")
+	require.NoError(t, err, "Failed to read light client update file")
+
+	var update types.LightClientUpdate
+	err = json.Unmarshal(updateFile, &update)
+	require.NoError(t, err, "Failed to parse light client update JSON")
+
+	t.Logf("Loaded light client update for slot %s", update.Data.AttestedHeader.Beacon.Slot)
+
+	// Parse sync committee bits
+	bits := types.ParseSyncCommitteeBits(update.Data.SyncAggregate.SyncCommitteeBits)
+
+	// Parse signature (G2 point)
+	sigBytes := update.Data.SyncAggregate.SyncCommitteeSignature[:]
+	var signature bls12381.G2Affine
+	_, err = signature.SetBytes(sigBytes)
+	require.NoError(t, err, "Failed to deserialize signature")
+
+	// Parse all 512 public keys
+	require.Equal(t, 512, len(syncCommittee.Pubkeys), "Expected 512 pubkeys")
+	var pubkeys [512]bls12381.G1Affine
+	for i := 0; i < 512; i++ {
+		pubkeyBytes := syncCommittee.Pubkeys[i][:]
+		_, err = pubkeys[i].SetBytes(pubkeyBytes)
+		require.NoError(t, err, "Failed to deserialize pubkey %d", i)
+	}
+
+	// Create witness
+	witness := &circuit.ScUpdateVerifierCircuit{}
+
+	// Assign BeaconBlockHeader fields
+	witness.Slot = uint64(update.Data.AttestedHeader.Beacon.Slot)
+	witness.ProposerIndex = uint64(update.Data.AttestedHeader.Beacon.ProposerIndex)
+
+	for i := 0; i < 32; i++ {
+		witness.ParentRoot[i] = update.Data.AttestedHeader.Beacon.ParentRoot[i]
+		witness.StateRoot[i] = update.Data.AttestedHeader.Beacon.StateRoot[i]
+		witness.BodyRoot[i] = update.Data.AttestedHeader.Beacon.BodyRoot[i]
+	}
+
+	// Compute domain externally using types.ComputeDomain
+	domain, err := types.ComputeDomain(domainType, forkVersion, genesisValidatorsRootBytes)
+	require.NoError(t, err, "Failed to compute domain")
+
+	// Assign domain to witness
+	for i := 0; i < 32; i++ {
+		witness.Domain[i] = domain[i]
+	}
+
+	// Assign sync committee public keys (PRIVATE INPUT)
+	for i := 0; i < 512; i++ {
+		witness.SyncCommitteePubKeys[i] = sw_bls12381.NewG1Affine(pubkeys[i])
+	}
+
+	// Compute commitment to sync committee public keys (PUBLIC INPUT)
+	commitment := types.ComputeSyncCommitteePubKeysCommitment(pubkeys[:])
+	witness.SyncCommitteePubKeysCommit = commitment[:]
+	//for i := 0; i < 32; i++ {
+	//	witness.SyncCommitteePubKeysCommit[i] = commitment[i]
+	//}
+
+	// Assign sync committee bits (PUBLIC INPUT)
+	for i := 0; i < 512; i++ {
+		if bits[i] {
+			witness.SyncCommitteeBits[i] = 1
+		} else {
+			witness.SyncCommitteeBits[i] = 0
+		}
+	}
 
 	// Assign BLS signature using gnark's conversion function
 	witness.AggregatedSig = sw_bls12381.NewG2Affine(signature)
@@ -206,7 +325,10 @@ func TestBLSVerifierCircuit(t *testing.T) {
 		require.NoError(t, err, "Failed to create witness")
 
 		// Create proof using pre-compiled circuit and keys
-		proof, err := groth16.Prove(blsVerifierCCS, blsVerifierPK, fullWitness)
+		proof, err := groth16.Prove(blsVerifierCCS, blsVerifierPK, fullWitness,
+			backend.WithSolverOptions(
+				solver.WithLogger(gnarkLogger),
+			))
 		require.NoError(t, err, "Proof generation failed")
 
 		t.Logf("Proof generated successfully")
@@ -223,7 +345,9 @@ func TestBLSVerifierCircuit(t *testing.T) {
 	})
 }
 
-func TestBLSVerifierCircuitInvalidSignature(t *testing.T) {
+func TestScUpdateVerifierCircuitInvalidSignature(t *testing.T) {
+	onceSetupCircuit()
+
 	// Load sync committee
 	syncCommitteeFile, err := os.ReadFile("data/curr-sc.json")
 	require.NoError(t, err, "Failed to read sync committee file")
@@ -243,7 +367,7 @@ func TestBLSVerifierCircuitInvalidSignature(t *testing.T) {
 	// Parse sync committee bits
 	bits := types.ParseSyncCommitteeBits(update.Data.SyncAggregate.SyncCommitteeBits)
 
-	// Parse all 512 public keys and aggregate them
+	// Parse all 512 public keys
 	require.Equal(t, 512, len(syncCommittee.Pubkeys), "Expected 512 pubkeys")
 	var pubkeys [512]bls12381.G1Affine
 	for i := 0; i < 512; i++ {
@@ -252,22 +376,15 @@ func TestBLSVerifierCircuitInvalidSignature(t *testing.T) {
 		require.NoError(t, err, "Failed to deserialize pubkey %d", i)
 	}
 
-	// Aggregate public keys based on sync_committee_bits (OUTSIDE the circuit)
-	var aggregatedPubKey bls12381.G1Affine
-	aggregatedPubKey.Set(&bls12381.G1Affine{}) // Initialize to identity
-	for i := 0; i < 512; i++ {
-		if bits[i] {
-			aggregatedPubKey.Add(&aggregatedPubKey, &pubkeys[i])
-		}
-	}
-
 	// Use INVALID signature (random G2 point)
 	var invalidSignature bls12381.G2Affine
-	invalidSignature.X.SetRandom()
-	invalidSignature.Y.SetRandom()
+	_, err = invalidSignature.X.SetRandom()
+	require.NoError(t, err, "Failed to set random X")
+	_, err = invalidSignature.Y.SetRandom()
+	require.NoError(t, err, "Failed to set random Y")
 
 	// Create witness with invalid signature
-	witness := &circuit.BLSVerifierCircuit{}
+	witness := &circuit.ScUpdateVerifierCircuit{}
 
 	witness.Slot = uint64(update.Data.AttestedHeader.Beacon.Slot)
 	witness.ProposerIndex = uint64(update.Data.AttestedHeader.Beacon.ProposerIndex)
@@ -285,8 +402,26 @@ func TestBLSVerifierCircuitInvalidSignature(t *testing.T) {
 		witness.Domain[i] = domain[i]
 	}
 
-	// Assign aggregated public key (PUBLIC INPUT)
-	witness.AggregatedPubKey = sw_bls12381.NewG1Affine(aggregatedPubKey)
+	// Assign sync committee public keys (PRIVATE INPUT)
+	for i := 0; i < 512; i++ {
+		witness.SyncCommitteePubKeys[i] = sw_bls12381.NewG1Affine(pubkeys[i])
+	}
+
+	// Compute commitment to sync committee public keys (PUBLIC INPUT)
+	commitment := types.ComputeSyncCommitteePubKeysCommitment(pubkeys[:])
+	witness.SyncCommitteePubKeysCommit = commitment[:]
+	//for i := 0; i < 32; i++ {
+	//	witness.SyncCommitteePubKeysCommit[i] = commitment[i]
+	//}
+
+	// Assign sync committee bits (PUBLIC INPUT)
+	for i := 0; i < 512; i++ {
+		if bits[i] {
+			witness.SyncCommitteeBits[i] = 1
+		} else {
+			witness.SyncCommitteeBits[i] = 0
+		}
+	}
 
 	// Assign INVALID signature
 	witness.AggregatedSig = sw_bls12381.NewG2Affine(invalidSignature)
@@ -317,7 +452,9 @@ func TestBLSVerifierCircuitInvalidSignature(t *testing.T) {
 	}
 }
 
-func TestBLSVerifierCircuitInvalidBlockRoot(t *testing.T) {
+func TestScUpdateVerifierCircuitInvalidBlockRoot(t *testing.T) {
+	onceSetupCircuit()
+
 	// Load sync committee
 	syncCommitteeFile, err := os.ReadFile("data/curr-sc.json")
 	require.NoError(t, err, "Failed to read sync committee file")
@@ -337,22 +474,13 @@ func TestBLSVerifierCircuitInvalidBlockRoot(t *testing.T) {
 	// Parse sync committee bits
 	bits := types.ParseSyncCommitteeBits(update.Data.SyncAggregate.SyncCommitteeBits)
 
-	// Parse all 512 public keys and aggregate them
+	// Parse all 512 public keys
 	require.Equal(t, 512, len(syncCommittee.Pubkeys), "Expected 512 pubkeys")
 	var pubkeys [512]bls12381.G1Affine
 	for i := 0; i < 512; i++ {
 		pubkeyBytes := syncCommittee.Pubkeys[i][:]
 		_, err = pubkeys[i].SetBytes(pubkeyBytes)
 		require.NoError(t, err, "Failed to deserialize pubkey %d", i)
-	}
-
-	// Aggregate public keys based on sync_committee_bits (OUTSIDE the circuit)
-	var aggregatedPubKey bls12381.G1Affine
-	aggregatedPubKey.Set(&bls12381.G1Affine{}) // Initialize to identity
-	for i := 0; i < 512; i++ {
-		if bits[i] {
-			aggregatedPubKey.Add(&aggregatedPubKey, &pubkeys[i])
-		}
 	}
 
 	// Parse signature
@@ -368,7 +496,7 @@ func TestBLSVerifierCircuitInvalidBlockRoot(t *testing.T) {
 	}
 
 	// Create witness with invalid block root
-	witness := &circuit.BLSVerifierCircuit{}
+	witness := &circuit.ScUpdateVerifierCircuit{}
 
 	witness.Slot = uint64(update.Data.AttestedHeader.Beacon.Slot)
 	witness.ProposerIndex = uint64(update.Data.AttestedHeader.Beacon.ProposerIndex)
@@ -386,8 +514,26 @@ func TestBLSVerifierCircuitInvalidBlockRoot(t *testing.T) {
 		witness.Domain[i] = domain[i]
 	}
 
-	// Assign aggregated public key (PUBLIC INPUT)
-	witness.AggregatedPubKey = sw_bls12381.NewG1Affine(aggregatedPubKey)
+	// Assign sync committee public keys (PRIVATE INPUT)
+	for i := 0; i < 512; i++ {
+		witness.SyncCommitteePubKeys[i] = sw_bls12381.NewG1Affine(pubkeys[i])
+	}
+
+	// Compute commitment to sync committee public keys (PUBLIC INPUT)
+	commitment := types.ComputeSyncCommitteePubKeysCommitment(pubkeys[:])
+	witness.SyncCommitteePubKeysCommit = commitment[:]
+	//for i := 0; i < 32; i++ {
+	//	witness.SyncCommitteePubKeysCommit[i] = commitment[i]
+	//}
+
+	// Assign sync committee bits (PUBLIC INPUT)
+	for i := 0; i < 512; i++ {
+		if bits[i] {
+			witness.SyncCommitteeBits[i] = 1
+		} else {
+			witness.SyncCommitteeBits[i] = 0
+		}
+	}
 
 	witness.AggregatedSig = sw_bls12381.NewG2Affine(signature)
 
@@ -406,7 +552,9 @@ func TestBLSVerifierCircuitInvalidBlockRoot(t *testing.T) {
 }
 
 // Benchmark the circuit
-func BenchmarkBLSVerifierCircuit(b *testing.B) {
+func BenchmarkScUpdateVerifierCircuit(b *testing.B) {
+	onceSetupCircuit()
+
 	// Load test data
 	syncCommitteeFile, err := os.ReadFile("data/curr-sc.json")
 	if err != nil {
@@ -422,27 +570,18 @@ func BenchmarkBLSVerifierCircuit(b *testing.B) {
 
 	bits := types.ParseSyncCommitteeBits(update.Data.SyncAggregate.SyncCommitteeBits)
 
-	// Parse all 512 public keys and aggregate them
+	// Parse all 512 public keys
 	var pubkeys [512]bls12381.G1Affine
 	for i := 0; i < 512; i++ {
 		pubkeyBytes := syncCommittee.Pubkeys[i][:]
 		_, _ = pubkeys[i].SetBytes(pubkeyBytes)
 	}
 
-	// Aggregate public keys based on sync_committee_bits (OUTSIDE the circuit)
-	var aggregatedPubKey bls12381.G1Affine
-	aggregatedPubKey.Set(&bls12381.G1Affine{}) // Initialize to identity
-	for i := 0; i < 512; i++ {
-		if bits[i] {
-			aggregatedPubKey.Add(&aggregatedPubKey, &pubkeys[i])
-		}
-	}
-
 	sigBytes := update.Data.SyncAggregate.SyncCommitteeSignature[:]
 	var signature bls12381.G2Affine
-	signature.SetBytes(sigBytes)
+	_, _ = signature.SetBytes(sigBytes)
 
-	witness := &circuit.BLSVerifierCircuit{}
+	witness := &circuit.ScUpdateVerifierCircuit{}
 	witness.Slot = uint64(update.Data.AttestedHeader.Beacon.Slot)
 	witness.ProposerIndex = uint64(update.Data.AttestedHeader.Beacon.ProposerIndex)
 
@@ -458,8 +597,26 @@ func BenchmarkBLSVerifierCircuit(b *testing.B) {
 		witness.Domain[i] = domain[i]
 	}
 
-	// Assign aggregated public key (PUBLIC INPUT)
-	witness.AggregatedPubKey = sw_bls12381.NewG1Affine(aggregatedPubKey)
+	// Assign sync committee public keys (PRIVATE INPUT)
+	for i := 0; i < 512; i++ {
+		witness.SyncCommitteePubKeys[i] = sw_bls12381.NewG1Affine(pubkeys[i])
+	}
+
+	// Compute commitment to sync committee public keys (PUBLIC INPUT)
+	commitment := types.ComputeSyncCommitteePubKeysCommitment(pubkeys[:])
+	witness.SyncCommitteePubKeysCommit = commitment[:]
+	//for i := 0; i < 32; i++ {
+	//	witness.SyncCommitteePubKeysCommit[i] = commitment[i]
+	//}
+
+	// Assign sync committee bits (PUBLIC INPUT)
+	for i := 0; i < 512; i++ {
+		if bits[i] {
+			witness.SyncCommitteeBits[i] = 1
+		} else {
+			witness.SyncCommitteeBits[i] = 0
+		}
+	}
 
 	witness.AggregatedSig = sw_bls12381.NewG2Affine(signature)
 

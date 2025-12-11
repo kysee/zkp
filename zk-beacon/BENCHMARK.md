@@ -1,3 +1,49 @@
+## 12.11 (2)
+
+Compute the poseidon hash for only the curr_sync_committee.pubkeys.Limbs[0:1].
+
+### Constraints
+| Circuit | Constraints |
+| --- | --- |
+|ScUpdateVerifierCircuit | 2907544 |
+
+### Benchmark
+
+goos: darwin
+goarch: arm64
+pkg: github.com/kysee/zkp/zk-beacon
+cpu: Apple M1 Max
+BenchmarkScUpdateVerifierCircuit
+
+| Operation | Time                |
+| --- |---------------------|
+| ProofGeneration | 9778210613 ns/op |
+| ProofVerification | 1080386 ns/op     |
+
+## 12.11
+
+Add the aggregation of curr_sync_committee.pubkeys.  
+Add the poseidon hash checking for curr_sync_committee.pubkeys.
+
+### Constraints
+
+| Circuit | Constraints |
+| --- | --- |
+| ScUpdateVerifierCircuit | 3288472 |
+
+### Benchmark
+
+goos: darwin
+goarch: arm64
+pkg: github.com/kysee/zkp/zk-beacon
+cpu: Apple M1 Max
+BenchmarkScUpdateVerifierCircuit
+
+| Operation | Time                |
+| --- |---------------------|
+| ProofGeneration | 11363641574 ns/op |
+| ProofVerification | 1080946 ns/op     |
+
 ## 12.06 
 
 Remove the aggregation of curr_sync_committee pubkeys from the BLSVerifierCircuit.

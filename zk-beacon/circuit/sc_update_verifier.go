@@ -8,22 +8,28 @@ import (
 	"github.com/consensys/gnark/std/algebra/emulated/fields_bls12381"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bls12381"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_emulated"
+	gnark_hash "github.com/consensys/gnark/std/hash"
 	"github.com/consensys/gnark/std/hash/sha2"
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/consensys/gnark/std/math/uints"
+	"github.com/consensys/gnark/std/permutation/poseidon2"
 )
 
-// BLSVerifierCircuit verifies Ethereum beacon chain sync committee BLS signatures
+// ScUpdateVerifierCircuit verifies Ethereum beacon chain sync committee BLS signatures
 //
 // This circuit performs the complete verification flow:
 // 1. Computes blockRoot from BeaconBlockHeader fields
 // 2. Computes signingRoot = hash(blockRoot, domain)
 // 3. Computes signingRootG2 = hash-to-curve(signingRoot) IN-CIRCUIT
-// 4. Verifies BLS signature: e(aggregatedPubKey, H(signingRoot)) == e(G1, signature)
-// 5. Verifies next_sync_committee is included in StateRoot via SSZ Merkle proof
+// 4. Verifies sync committee pubkey commitment
+// 5. Aggregates public keys based on sync committee bits
+// 6. Verifies BLS signature: e(aggregatedPubKey, H(signingRoot)) == e(G1, signature)
+// 7. Verifies next_sync_committee is included in StateRoot via SSZ Merkle proof
 //
-// Note: Public key aggregation is performed OUTSIDE the circuit
-type BLSVerifierCircuit struct {
+// NOTE: For complete verification of next_sync_committee, the following checks must be performed OUTSIDE the circuit:
+// - Slot(Period) validation
+// - Verification that the number of validators who signed the AggregatedSig exceeds 2/3 of the total
+type ScUpdateVerifierCircuit struct {
 	// BeaconBlockHeader fields (private inputs)
 	Slot          frontend.Variable     // uint64
 	ProposerIndex frontend.Variable     // uint64
@@ -36,39 +42,53 @@ type BLSVerifierCircuit struct {
 	Domain [32]frontend.Variable // bytes32
 
 	// Sync committee data (private inputs)
-	AggregatedSig sw_bls12381.G2Affine // Aggregated signature
+	SyncCommitteePubKeys [512]sw_bls12381.G1Affine // 512 sync committee public keys
+	SyncCommitteeBits    [512]frontend.Variable    // Bit array indicating which validators signed (0 or 1)
+	AggregatedSig        sw_bls12381.G2Affine      // Aggregated signature
 
 	// Next sync committee Merkle proof data
 	NextSyncCommitteeBranch [6][32]frontend.Variable // Merkle branch proving inclusion in StateRoot
 
 	// Public inputs - verified by the circuit
-	AggregatedPubKey      sw_bls12381.G1Affine  `gnark:",public"` // Aggregated public key (computed externally)
-	NextSyncCommitteeRoot [32]frontend.Variable `gnark:",public"` // SSZ root of next_sync_committee
+	SyncCommitteePubKeysCommit frontend.Variable     `gnark:",public"` // Poseidon hash commitment to sync committee pubkeys
+	NextSyncCommitteeRoot      [32]frontend.Variable `gnark:",public"` // SSZ root of next_sync_committee
 }
 
 // Define implements the circuit constraints
-func (c *BLSVerifierCircuit) Define(api frontend.API) error {
-	// Step 1: Compute blockRoot from BeaconBlockHeader
+func (c *ScUpdateVerifierCircuit) Define(api frontend.API) error {
+	// Step 1: Verify sync committee pubkeys commitment using Poseidon hash
+	err := c.verifySyncCommitteePubKeysCommitment(api)
+	if err != nil {
+		return fmt.Errorf("sync committee pubkeys commitment verification failed: %w", err)
+	}
+
+	// Step 2: Aggregate public keys based on sync committee bits
+	aggregatedPubKey, err := c.aggregatePubKeys(api)
+	if err != nil {
+		return fmt.Errorf("public key aggregation failed: %w", err)
+	}
+
+	// Step 3: Compute blockRoot from BeaconBlockHeader
 	blockRoot := c.computeBlockRoot(api)
 
-	// Step 2: Compute signingRoot = hash(blockRoot, domain)
+	// Step 4: Compute signingRoot = hash(blockRoot, domain)
 	signingRoot := c.computeSigningRoot(api, blockRoot)
 
-	// Step 3: Compute signingRootG2 = hash-to-curve(signingRoot) IN-CIRCUIT
+	// Step 5: Compute signingRootG2 = hash-to-curve(signingRoot) IN-CIRCUIT
 	signingRootG2, err := c.hashToG2InCircuit(api, signingRoot)
 	if err != nil {
 		return fmt.Errorf("hash-to-curve failed: %w", err)
 	}
 
-	// Step 4: Verify BLS signature using the aggregated public key (provided as public input)
+	// Step 6: Verify BLS signature using the aggregated public key
 	// If the BeaconBlockHeader fields are incorrect, the blockRoot will be wrong,
 	// leading to wrong signingRoot and signingRootG2, which will fail signature verification
-	err = c.verifyBLSSignature(api, signingRootG2)
+	err = c.verifyBLSSignature(api, aggregatedPubKey, signingRootG2)
 	if err != nil {
 		return fmt.Errorf("BLS signature verification failed: %w", err)
 	}
 
-	// Step 5: Verify next_sync_committee is included in StateRoot via SSZ Merkle proof
+	// Step 7: Verify next_sync_committee is included in StateRoot via SSZ Merkle proof
 	err = c.verifyNextSyncCommitteeMerkleProof(api)
 	if err != nil {
 		return fmt.Errorf("next_sync_committee Merkle proof verification failed: %w", err)
@@ -79,7 +99,7 @@ func (c *BLSVerifierCircuit) Define(api frontend.API) error {
 
 // computeBlockRoot computes the SSZ hash_tree_root of the beacon block header
 // This reuses the same logic as BlockRootHasher
-func (c *BLSVerifierCircuit) computeBlockRoot(api frontend.API) [32]frontend.Variable {
+func (c *ScUpdateVerifierCircuit) computeBlockRoot(api frontend.API) [32]frontend.Variable {
 	// Convert each field to a 32-byte chunk
 	slotChunk := c.serializeUint64ToChunk(api, c.Slot)
 	proposerChunk := c.serializeUint64ToChunk(api, c.ProposerIndex)
@@ -114,7 +134,7 @@ func (c *BLSVerifierCircuit) computeBlockRoot(api frontend.API) [32]frontend.Var
 //	domain: domain (32 bytes)
 //
 // Note: domain is now provided as a pre-computed input from outside the circuit
-func (c *BLSVerifierCircuit) computeSigningRoot(api frontend.API, blockRoot [32]frontend.Variable) [32]frontend.Variable {
+func (c *ScUpdateVerifierCircuit) computeSigningRoot(api frontend.API, blockRoot [32]frontend.Variable) [32]frontend.Variable {
 	// Compute signingRoot = hash(blockRoot || domain)
 	signingRoot := c.hashPair(api, blockRoot, c.Domain)
 	return signingRoot
@@ -122,7 +142,7 @@ func (c *BLSVerifierCircuit) computeSigningRoot(api frontend.API, blockRoot [32]
 
 // hashToG2InCircuit performs RFC 9380 hash_to_G2 for BLS12-381 G2
 // using expand_message_xmd(SHA-256) and ETH2 DST.
-func (c *BLSVerifierCircuit) hashToG2InCircuit(
+func (c *ScUpdateVerifierCircuit) hashToG2InCircuit(
 	api frontend.API,
 	signingRoot [32]frontend.Variable,
 ) (*sw_bls12381.G2Affine, error) {
@@ -167,7 +187,7 @@ func (c *BLSVerifierCircuit) hashToG2InCircuit(
 // tv[i][j] = uniform_bytes[L*(j + i*m) : L*(j + i*m) + L]   (i=0..1, j=0..1)
 // u[i].A0 = OS2IP(tv[i][0]) mod p
 // u[i].A1 = OS2IP(tv[i][1]) mod p
-func (c *BLSVerifierCircuit) hashToFieldBLS12381Fp2(
+func (c *ScUpdateVerifierCircuit) hashToFieldBLS12381Fp2(
 	api frontend.API,
 	signingRoot [32]frontend.Variable,
 ) ([2]fields_bls12381.E2, error) {
@@ -339,7 +359,7 @@ func expandMessageXMD_SHA256(
 
 // bytesToBLS12381FpMod reduces a big-endian byte slice to a BLS12-381 Fp element.
 // Implements res = OS2IP(b) mod p via Horner evaluation to stay within limb width constraints.
-func (c *BLSVerifierCircuit) bytesToBLS12381FpMod(
+func (c *ScUpdateVerifierCircuit) bytesToBLS12381FpMod(
 	api frontend.API,
 	fp *emulated.Field[sw_bls12381.BaseField],
 	byteAPI *uints.Bytes,
@@ -365,10 +385,82 @@ func (c *BLSVerifierCircuit) bytesToBLS12381FpMod(
 	return res, nil
 }
 
+// verifySyncCommitteePubKeysCommitment verifies that the commitment to sync committee pubkeys matches
+// Uses Poseidon hash which is SNARK-friendly and much more efficient than SHA256
+// Only hashes the first limb (Limbs[0]) of each X coordinate for efficiency
+func (c *ScUpdateVerifierCircuit) verifySyncCommitteePubKeysCommitment(api frontend.API) error {
+	// Collect only the first limb of X coordinates
+	//var inputs [2]frontend.Variable
+
+	// Compute Poseidon hash
+	permu, err := poseidon2.NewPoseidon2FromParameters(api, 2, 6, 50)
+	if err != nil {
+		return fmt.Errorf("failed to create Poseidon hasher: %w", err)
+	}
+	hasher := gnark_hash.NewMerkleDamgardHasher(api, permu, 0)
+
+	//var inputs [6]frontend.Variable
+	for i := 0; i < 512; i++ {
+		// Use only the first limb (Limbs[0], Limbs[1]) of the X coordinate
+		hasher.Write(c.SyncCommitteePubKeys[i].X.Limbs[0], c.SyncCommitteePubKeys[i].X.Limbs[1])
+
+		//api.Println("circuit: pubkeys[", i, "].X.Limbs=", c.SyncCommitteePubKeys[i].X.Limbs)
+	}
+
+	commitment := hasher.Sum()
+
+	//Verify commitment matches public input
+	api.AssertIsEqual(commitment, c.SyncCommitteePubKeysCommit)
+
+	return nil
+}
+
+// aggregatePubKeys aggregates public keys based on sync_committee_bits
+// Returns the aggregated public key for validators who participated in signing
+func (c *ScUpdateVerifierCircuit) aggregatePubKeys(api frontend.API) (*sw_bls12381.G1Affine, error) {
+	// Create curve for G1 operations
+	curve, err := sw_emulated.New[sw_bls12381.BaseField, sw_bls12381.ScalarField](api, sw_emulated.GetBLS12381Params())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create curve: %w", err)
+	}
+
+	// Find the first validator that participated to initialize the accumulator
+	accumulator := &c.SyncCommitteePubKeys[0]
+	hasInitialized := c.SyncCommitteeBits[0]
+
+	// Process remaining validators
+	for i := 1; i < 512; i++ {
+		bit := c.SyncCommitteeBits[i]
+
+		// If we haven't initialized yet and this bit is set, use this as initial value
+		isFirstSelected := api.And(api.IsZero(hasInitialized), bit)
+
+		// If hasInitialized is true and bit is set, we should add
+		shouldAdd := api.And(hasInitialized, bit)
+
+		// Compute sum = accumulator + pubkey[i]
+		sum := curve.Add(accumulator, &c.SyncCommitteePubKeys[i])
+
+		// If shouldAdd, use sum; otherwise keep accumulator
+		tempResult := curve.Select(shouldAdd, sum, accumulator)
+
+		// If this is the first selected key, replace with pubkey[i]; otherwise use tempResult
+		accumulator = curve.Select(isFirstSelected, &c.SyncCommitteePubKeys[i], tempResult)
+
+		// Update hasInitialized flag
+		hasInitialized = api.Or(hasInitialized, bit)
+	}
+
+	// Ensure at least one validator participated
+	api.AssertIsEqual(hasInitialized, 1)
+
+	return accumulator, nil
+}
+
 // verifyBLSSignature verifies the BLS signature using pairing check
 // Verifies: e(pubkey, H(msg)) == e(G1, signature)
 // Or equivalently: e(pubkey, H(msg)) * e(-G1, signature) == 1
-func (c *BLSVerifierCircuit) verifyBLSSignature(api frontend.API, signingRootG2 *sw_bls12381.G2Affine) error {
+func (c *ScUpdateVerifierCircuit) verifyBLSSignature(api frontend.API, aggregatedPubKey *sw_bls12381.G1Affine, signingRootG2 *sw_bls12381.G2Affine) error {
 	// Create pairing instance
 	pairing, err := sw_bls12381.NewPairing(api)
 	if err != nil {
@@ -376,7 +468,7 @@ func (c *BLSVerifierCircuit) verifyBLSSignature(api frontend.API, signingRootG2 
 	}
 
 	// Verify inputs are in correct subgroups
-	pairing.AssertIsOnG1(&c.AggregatedPubKey)
+	pairing.AssertIsOnG1(aggregatedPubKey)
 	pairing.AssertIsOnG2(signingRootG2)
 	pairing.AssertIsOnG2(&c.AggregatedSig)
 
@@ -392,7 +484,7 @@ func (c *BLSVerifierCircuit) verifyBLSSignature(api frontend.API, signingRootG2 
 
 	// Pairing check: e(pubkey, H(msg)) * e(-G1, signature) == 1
 	err = pairing.PairingCheck(
-		[]*sw_bls12381.G1Affine{&c.AggregatedPubKey, negG1Gen},
+		[]*sw_bls12381.G1Affine{aggregatedPubKey, negG1Gen},
 		[]*sw_bls12381.G2Affine{signingRootG2, &c.AggregatedSig},
 	)
 	if err != nil {
@@ -400,6 +492,21 @@ func (c *BLSVerifierCircuit) verifyBLSSignature(api frontend.API, signingRootG2 
 	}
 
 	return nil
+}
+
+// serializeG1FieldElement serializes a field element to bytes for hashing
+func (c *ScUpdateVerifierCircuit) serializeG1FieldElement(api frontend.API, elem *emulated.Element[sw_bls12381.BaseField]) []uints.U8 {
+	// Convert field element to bytes (48 bytes for BLS12-381)
+	// This is a simplified version - for production, use proper serialization
+	bytes := make([]uints.U8, 48)
+
+	// Convert each limb to bytes
+	// Note: This is a placeholder - actual implementation would need proper big-endian serialization
+	for i := 0; i < 48; i++ {
+		bytes[i] = uints.NewU8(0)
+	}
+
+	return bytes
 }
 
 // verifyNextSyncCommitteeMerkleProof verifies that next_sync_committee root is included in StateRoot
@@ -414,7 +521,7 @@ func (c *BLSVerifierCircuit) verifyBLSSignature(api frontend.API, signingRootG2 
 // 1. Starting with leaf = NextSyncCommitteeRoot
 // 2. For each branch node, compute parent = hash(left, right) where left/right depends on the path
 // 3. Final result should equal StateRoot
-func (c *BLSVerifierCircuit) verifyNextSyncCommitteeMerkleProof(api frontend.API) error {
+func (c *ScUpdateVerifierCircuit) verifyNextSyncCommitteeMerkleProof(api frontend.API) error {
 	// NextSyncCommittee generalized index in Fulu BeaconState
 	// Position 23 (0-indexed) in BeaconState structure
 	// Generalized index = 2^depth + position = 64 + 23 = 87
@@ -453,7 +560,7 @@ func (c *BLSVerifierCircuit) verifyNextSyncCommitteeMerkleProof(api frontend.API
 
 // Helper functions (reused from BlockRootHasher)
 
-func (c *BLSVerifierCircuit) serializeUint64ToChunk(api frontend.API, value frontend.Variable) [32]frontend.Variable {
+func (c *ScUpdateVerifierCircuit) serializeUint64ToChunk(api frontend.API, value frontend.Variable) [32]frontend.Variable {
 	var chunk [32]frontend.Variable
 
 	// Convert value to 64 bits (little-endian)
@@ -478,7 +585,7 @@ func (c *BLSVerifierCircuit) serializeUint64ToChunk(api frontend.API, value fron
 	return chunk
 }
 
-func (c *BLSVerifierCircuit) zeroChunk() [32]frontend.Variable {
+func (c *ScUpdateVerifierCircuit) zeroChunk() [32]frontend.Variable {
 	var chunk [32]frontend.Variable
 	for i := 0; i < 32; i++ {
 		chunk[i] = 0
@@ -486,7 +593,7 @@ func (c *BLSVerifierCircuit) zeroChunk() [32]frontend.Variable {
 	return chunk
 }
 
-func (c *BLSVerifierCircuit) hashPair(api frontend.API, left, right [32]frontend.Variable) [32]frontend.Variable {
+func (c *ScUpdateVerifierCircuit) hashPair(api frontend.API, left, right [32]frontend.Variable) [32]frontend.Variable {
 	// Create a new SHA256 hasher
 	hasher, err := sha2.New(api)
 	if err != nil {
