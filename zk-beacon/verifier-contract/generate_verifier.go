@@ -32,10 +32,10 @@ func main() {
 		panic(err)
 	}
 
-	err = os.WriteFile("contracts/SCUpdator.sol", buf.Bytes(), 0644)
+	err = os.WriteFile("contracts/ScUpdateVerifier.sol", buf.Bytes(), 0644)
 	if err != nil {
 		panic(err)
 	}
 
-	println("✅ Solidity verifier generated: contracts/SCUpdator.sol")
+	println("✅ Solidity verifier generated: contracts/ScUpdateVerifier.sol")
 }
