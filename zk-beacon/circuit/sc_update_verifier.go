@@ -8,11 +8,9 @@ import (
 	"github.com/consensys/gnark/std/algebra/emulated/fields_bls12381"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bls12381"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_emulated"
-	gnark_hash "github.com/consensys/gnark/std/hash"
 	"github.com/consensys/gnark/std/hash/sha2"
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/consensys/gnark/std/math/uints"
-	"github.com/consensys/gnark/std/permutation/poseidon2"
 )
 
 // ScUpdateVerifierCircuit verifies Ethereum beacon chain sync committee BLS signatures
@@ -50,8 +48,8 @@ type ScUpdateVerifierCircuit struct {
 	NextSyncCommitteeBranch [6][32]frontend.Variable // Merkle branch proving inclusion in StateRoot
 
 	// Public inputs - verified by the circuit
-	SyncCommitteePubKeysCommit frontend.Variable     `gnark:",public"` // Poseidon hash commitment to sync committee pubkeys
-	NextSyncCommitteeRoot      [32]frontend.Variable `gnark:",public"` // SSZ root of next_sync_committee
+	SyncCommitteeHash     frontend.Variable     `gnark:",public"` // Poseidon hash commitment to sync committee pubkeys
+	NextSyncCommitteeRoot [32]frontend.Variable `gnark:",public"` // SSZ root of next_sync_committee
 }
 
 // Define implements the circuit constraints
@@ -386,31 +384,34 @@ func (c *ScUpdateVerifierCircuit) bytesToBLS12381FpMod(
 }
 
 // verifySyncCommitteePubKeysCommitment verifies that the commitment to sync committee pubkeys matches
-// Uses Poseidon hash which is SNARK-friendly and much more efficient than SHA256
-// Only hashes the first limb (Limbs[0]) of each X coordinate for efficiency
+// Uses SHA2 hash for compatibility
+// Only hashes the first two limbs (Limbs[0], Limbs[1]) of each X coordinate for efficiency
 func (c *ScUpdateVerifierCircuit) verifySyncCommitteePubKeysCommitment(api frontend.API) error {
-	// Collect only the first limb of X coordinates
-	//var inputs [2]frontend.Variable
-
-	// Compute Poseidon hash
-	permu, err := poseidon2.NewPoseidon2FromParameters(api, 2, 6, 50)
+	// Create SHA2 hasher
+	hasher, err := sha2.New(api)
 	if err != nil {
-		return fmt.Errorf("failed to create Poseidon hasher: %w", err)
+		return fmt.Errorf("failed to create SHA2 hasher: %w", err)
 	}
-	hasher := gnark_hash.NewMerkleDamgardHasher(api, permu, 0)
 
-	//var inputs [6]frontend.Variable
+	// Hash the first two limbs of each X coordinate
 	for i := 0; i < 512; i++ {
-		// Use only the first limb (Limbs[0], Limbs[1]) of the X coordinate
-		hasher.Write(c.SyncCommitteePubKeys[i].X.Limbs[0], c.SyncCommitteePubKeys[i].X.Limbs[1])
+		// Serialize the first limb (Limbs[0])
+		limb0Bytes := c.serializeLimbTo8Bytes(api, c.SyncCommitteePubKeys[i].X.Limbs[0])
+		hasher.Write(limb0Bytes)
 
-		//api.Println("circuit: pubkeys[", i, "].X.Limbs=", c.SyncCommitteePubKeys[i].X.Limbs)
+		// Serialize the second limb (Limbs[1])
+		limb1Bytes := c.serializeLimbTo8Bytes(api, c.SyncCommitteePubKeys[i].X.Limbs[1])
+		hasher.Write(limb1Bytes)
 	}
 
-	commitment := hasher.Sum()
+	// Compute hash
+	hashResult := hasher.Sum() // Returns []uints.U8 of length 32
 
-	//Verify commitment matches public input
-	api.AssertIsEqual(commitment, c.SyncCommitteePubKeysCommit)
+	// Convert hash bytes to a single frontend.Variable
+	commitment := c.hashBytesToVariable(api, hashResult)
+
+	// Verify commitment matches public input
+	api.AssertIsEqual(commitment, c.SyncCommitteeHash)
 
 	return nil
 }
@@ -559,6 +560,37 @@ func (c *ScUpdateVerifierCircuit) verifyNextSyncCommitteeMerkleProof(api fronten
 }
 
 // Helper functions (reused from BlockRootHasher)
+
+// serializeLimbTo8Bytes converts a limb (frontend.Variable) to 8 bytes (64 bits, big-endian)
+func (c *ScUpdateVerifierCircuit) serializeLimbTo8Bytes(api frontend.API, limb frontend.Variable) []uints.U8 {
+	// Convert limb to 64 bits
+	bits := api.ToBinary(limb, 64)
+	bytes := make([]uints.U8, 8)
+
+	// Pack bits into bytes and reverse for big-endian
+	for byteIdx := 0; byteIdx < 8; byteIdx++ {
+		var byteValue frontend.Variable = 0
+		for bitIdx := 0; bitIdx < 8; bitIdx++ {
+			bit := bits[byteIdx*8+bitIdx]
+			power := 1 << bitIdx
+			byteValue = api.Add(byteValue, api.Mul(bit, power))
+		}
+		// Store in reverse order for big-endian
+		bytes[7-byteIdx] = uints.U8{Val: byteValue}
+	}
+
+	return bytes
+}
+
+// hashBytesToVariable converts SHA2 hash bytes to a single frontend.Variable
+func (c *ScUpdateVerifierCircuit) hashBytesToVariable(api frontend.API, hashBytes []uints.U8) frontend.Variable {
+	// Convert bytes to a single frontend.Variable by interpreting as big-endian number
+	var result frontend.Variable = 0
+	for i := 0; i < len(hashBytes); i++ {
+		result = api.Add(api.Mul(result, 256), hashBytes[i].Val)
+	}
+	return result
+}
 
 func (c *ScUpdateVerifierCircuit) serializeUint64ToChunk(api frontend.API, value frontend.Variable) [32]frontend.Variable {
 	var chunk [32]frontend.Variable

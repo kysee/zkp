@@ -198,10 +198,10 @@ func TestScUpdateVerifierCircuit_IsSolved(t *testing.T) {
 	}
 
 	// Compute commitment to sync committee public keys (PUBLIC INPUT)
-	commitment := types.ComputeSyncCommitteePubKeysCommitment(pubkeys[:])
-	witness.SyncCommitteePubKeysCommit = commitment[:]
+	commitment := types.ComputeSyncCommitteeHash(pubkeys[:])
+	witness.SyncCommitteeHash = commitment[:]
 	//for i := 0; i < 32; i++ {
-	//	witness.SyncCommitteePubKeysCommit[i] = commitment[i]
+	//	witness.SyncCommitteeHash[i] = commitment[i]
 	//}
 
 	// Assign sync committee bits (PUBLIC INPUT)
@@ -298,10 +298,10 @@ func TestScUpdateVerifierCircuit(t *testing.T) {
 	}
 
 	// Compute commitment to sync committee public keys (PUBLIC INPUT)
-	commitment := types.ComputeSyncCommitteePubKeysCommitment(pubkeys[:])
-	witness.SyncCommitteePubKeysCommit = commitment[:]
+	commitment := types.ComputeSyncCommitteeHash(pubkeys[:])
+	witness.SyncCommitteeHash = commitment[:]
 	//for i := 0; i < 32; i++ {
-	//	witness.SyncCommitteePubKeysCommit[i] = commitment[i]
+	//	witness.SyncCommitteeHash[i] = commitment[i]
 	//}
 
 	// Assign sync committee bits (PUBLIC INPUT)
@@ -409,10 +409,10 @@ func TestScUpdateVerifierCircuitInvalidSignature(t *testing.T) {
 	}
 
 	// Compute commitment to sync committee public keys (PUBLIC INPUT)
-	commitment := types.ComputeSyncCommitteePubKeysCommitment(pubkeys[:])
-	witness.SyncCommitteePubKeysCommit = commitment[:]
+	commitment := types.ComputeSyncCommitteeHash(pubkeys[:])
+	witness.SyncCommitteeHash = commitment[:]
 	//for i := 0; i < 32; i++ {
-	//	witness.SyncCommitteePubKeysCommit[i] = commitment[i]
+	//	witness.SyncCommitteeHash[i] = commitment[i]
 	//}
 
 	// Assign sync committee bits (PUBLIC INPUT)
@@ -521,10 +521,10 @@ func TestScUpdateVerifierCircuitInvalidBlockRoot(t *testing.T) {
 	}
 
 	// Compute commitment to sync committee public keys (PUBLIC INPUT)
-	commitment := types.ComputeSyncCommitteePubKeysCommitment(pubkeys[:])
-	witness.SyncCommitteePubKeysCommit = commitment[:]
+	commitment := types.ComputeSyncCommitteeHash(pubkeys[:])
+	witness.SyncCommitteeHash = commitment[:]
 	//for i := 0; i < 32; i++ {
-	//	witness.SyncCommitteePubKeysCommit[i] = commitment[i]
+	//	witness.SyncCommitteeHash[i] = commitment[i]
 	//}
 
 	// Assign sync committee bits (PUBLIC INPUT)
@@ -604,11 +604,8 @@ func BenchmarkScUpdateVerifierCircuit(b *testing.B) {
 	}
 
 	// Compute commitment to sync committee public keys (PUBLIC INPUT)
-	commitment := types.ComputeSyncCommitteePubKeysCommitment(pubkeys[:])
-	witness.SyncCommitteePubKeysCommit = commitment[:]
-	//for i := 0; i < 32; i++ {
-	//	witness.SyncCommitteePubKeysCommit[i] = commitment[i]
-	//}
+	commitment := types.ComputeSyncCommitteeHash(pubkeys[:])
+	witness.SyncCommitteeHash = commitment[:]
 
 	// Assign sync committee bits (PUBLIC INPUT)
 	for i := 0; i < 512; i++ {

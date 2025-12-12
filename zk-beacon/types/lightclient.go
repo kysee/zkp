@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/consensys/gnark-crypto/ecc/bls12-381"
-	gnarkHash "github.com/consensys/gnark-crypto/hash"
 	zrntaltair "github.com/protolambda/zrnt/eth2/beacon/altair"
 	zrntcommon "github.com/protolambda/zrnt/eth2/beacon/common"
 )
@@ -94,10 +93,10 @@ func AggregatePublicKeys(pubkeys []zrntcommon.BLSPubkey, bits []bool) (bls12381.
 	return aggPubkey, count, nil
 }
 
-// ComputeSyncCommitteePubKeysCommitment computes a SHA256 commitment to the sync committee public keys
+// ComputeSyncCommitteeHash computes a SHA256 commitment to the sync committee public keys
 // This matches the commitment computation in the circuit
 //
-//	func ComputeSyncCommitteePubKeysCommitment(pubkeys []bls12381.G1Affine) [32]byte {
+//	func ComputeSyncCommitteeHash(pubkeys []bls12381.G1Affine) [32]byte {
 //		hasher := sha256.New()
 //
 //		// Hash each public key's X coordinate (48 bytes in compressed form)
@@ -112,29 +111,30 @@ func AggregatePublicKeys(pubkeys []zrntcommon.BLSPubkey, bits []bool) (bls12381.
 //		copy(commitment[:], hasher.Sum(nil))
 //		return commitment
 //	}
-func ComputeSyncCommitteePubKeysCommitment(pubkeys []bls12381.G1Affine) [32]byte {
-	hasher := gnarkHash.POSEIDON2_BN254.New()
+func ComputeSyncCommitteeHash(pubkeys []bls12381.G1Affine) [32]byte {
+	hasher := sha256.New()
 
-	// Hash only the first limb (Limbs[0]) of each X coordinate for efficiency
-	// This matches the circuit which hashes only Limbs[0]
+	// Hash only the first two limbs (Limbs[0], Limbs[1]) of each X coordinate for efficiency
+	// This matches the circuit which hashes Limbs[0] and Limbs[1] in big-endian format
 	for i := 0; i < len(pubkeys); i++ {
 		// Get the X coordinate as bytes (big-endian, 48 bytes = 384 bits)
 		xBytes := pubkeys[i].X.Bytes()
 
-		// Extract only the first 8 bytes (corresponds to Limbs[0] in little-endian representation)
 		// BLS12-381 field elements are 6 limbs × 64 bits = 384 bits
-		// In big-endian byte representation, the last 8 bytes correspond to Limbs[0]
+		// In big-endian byte representation:
+		// - limb[5] (Limbs[0] in circuit) = xBytes[40:48]
+		// - limb[4] (Limbs[1] in circuit) = xBytes[32:40]
 
-		// use only limbs[0], limbs[1]
+		// Hash limbs in big-endian format to match the circuit
 		for j := 5; j >= 4; j-- {
-			input := xBytes[j*8 : j*8+8]
-			hasher.Write(input)
+			limbBytes := xBytes[j*8 : j*8+8]
+			hasher.Write(limbBytes)
 		}
 	}
 
 	var commitment [32]byte
 	copy(commitment[:], hasher.Sum(nil))
-	fmt.Printf("sync_committee hash: 0x%x\n", commitment)
+	fmt.Printf("curr_sync_committee hash: 0x%x\n", commitment)
 	return commitment
 }
 
