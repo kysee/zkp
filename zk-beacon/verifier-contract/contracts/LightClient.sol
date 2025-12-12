@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+import "hardhat/console.sol";
 import "./ScUpdateVerifier.sol";
 import "./PoseidonT3.sol";
 
@@ -88,11 +89,17 @@ contract LightClient {
 
         uint256 state = 0; // Initial state
 
+        console.log("limbs.length", limbs.length);
+
         for (uint256 i = 0; i < limbs.length; i++) {
             // Convert bytes8 to uint256
             uint256 data = uint256(uint64(limbs[i]));
             // Compress: state = hash(state, data)
             state = PoseidonT3.hash([state, data]);
+
+            if(i<10) {
+                console.logBytes8(limbs[i]);
+            }
         }
 
         return bytes32(state);
@@ -174,23 +181,23 @@ contract LightClient {
 
     // Test function for _pubKeysHash
     function testPubKeysHash(bytes calldata pubKeys) public pure returns (bytes32) {
-        require(pubKeys.length == 24576, "Invalid pubKeys length"); // 512 * 48 bytes
+        require(pubKeys.length % 48 == 0, "pubKeys length must be multiple of 48");
 
         // Extract limbs from pubkeys
         // Each pubkey (48 bytes) → extract limbs[4], limbs[5] (8 bytes each)
-        // 512 pubkeys × 2 limbs = 1024 limbs
-        bytes8[] memory limbs = new bytes8[](1024);
-        for (uint256 i = 0; i < 512; i++) {
+        uint256 numPubkeys = pubKeys.length / 48;
+        bytes8[] memory limbs = new bytes8[](numPubkeys * 2);
+        for (uint256 i = 0; i < numPubkeys; i++) {
             uint256 offset = i * 48;
             bytes8 limb0;
             bytes8 limb1;
             assembly {
-                // Extract limbs[4] (bytes 32-39 of the pubkey)
-                let data0 := calldataload(add(pubKeys.offset, add(offset, 32)))
+                // Extract limbs[0] (bytes 40-47 of the pubkey)
+                let data0 := calldataload(add(pubKeys.offset, add(offset, 40)))
                 limb0 := shl(192, shr(192, data0))
 
-                // Extract limbs[5] (bytes 40-47 of the pubkey)
-                let data1 := calldataload(add(pubKeys.offset, add(offset, 40)))
+                // Extract limbs[1] (bytes 32-39 of the pubkey)
+                let data1 := calldataload(add(pubKeys.offset, add(offset, 32)))
                 limb1 := shl(192, shr(192, data1))
             }
             limbs[i * 2] = limb0;

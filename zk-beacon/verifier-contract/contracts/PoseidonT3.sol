@@ -11,7 +11,7 @@ library PoseidonT3 {
 
     // See here for a simplified implementation: https://github.com/vimwitch/poseidon-solidity/blob/e57becdabb65d99fdc586fe1e1e09e7108202d53/contracts/Poseidon.sol#L40
     // Inspired by: https://github.com/iden3/circomlibjs/blob/v0.0.8/src/poseidon_slow.js
-    function hash(uint[2] memory) internal pure returns (uint) {
+    function hash(uint[2] memory) internal pure returns (uint result) {
         assembly {
             let F := 21888242871839275222246405745257275088548364400416034343698204186575808495617
             let M20 := 0x2b90bba00fca0589f617e7dcbfe82e0df706ab640ceb247b791a93b74e36736d
@@ -383,9 +383,7 @@ library PoseidonT3 {
             scratch0 := mulmod(state2, state2, F)
             state2 := mulmod(mulmod(scratch0, scratch0, F), state2, F)
 
-            mstore(0x0, mod(add(add(mulmod(state0, M00, F), mulmod(state1, M10, F)), mulmod(state2, M20, F)), F))
-
-            return(0, 0x20)
+            result := mod(add(add(mulmod(state0, M00, F), mulmod(state1, M10, F)), mulmod(state2, M20, F)), F)
         }
     }
 }

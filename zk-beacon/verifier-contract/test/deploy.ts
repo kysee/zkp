@@ -85,12 +85,30 @@ async function main() {
   console.log("\n=== Testing Helper Functions ===");
 
   // Test testPubKeysHash
-  const dummyPubKeys = "0x" + "00".repeat(24576);
-  const pubKeysHash = await lightClient.testPubKeysHash(dummyPubKeys);
+  //const dummyPubKeys = "0x" + "00".repeat(24576);
+    const dummyPubKeys = "0x" + "00".repeat(48*100);
+    try {
+        const estimatedGas = await lightClient.testPubKeysHash.estimateGas(dummyPubKeys, {gasLimit: 30000000});
+        console.log("testPubKeysHash - Estimated gas needed:", estimatedGas.toString());
+        console.log("In millions:", (Number(estimatedGas) / 1_000_000).toFixed(2), "M");
+    } catch (err) {
+        console.error("estimateGas failed:", err);
+    }
+
+
+    const pubKeysHash = await lightClient.testPubKeysHash(dummyPubKeys, {gasLimit: 30000000});
   console.log("testPubKeysHash result:", pubKeysHash);
 
   // Test testScRoot
   const dummySyncCommittee = "0x" + "00".repeat(24624);
+    try {
+        const estimatedGas = await lightClient.testScRoot.estimateGas(dummySyncCommittee, {gasLimit: 30000000});
+        console.log("testScRoot - Estimated gas needed:", estimatedGas.toString());
+        console.log("In millions:", (Number(estimatedGas) / 1_000_000).toFixed(2), "M");
+    } catch (err) {
+        console.error("estimateGas failed:", err);
+    }
+
   const scRoot = await lightClient.testScRoot(dummySyncCommittee);
   console.log("testScRoot result:", scRoot);
 

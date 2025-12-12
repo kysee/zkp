@@ -117,7 +117,7 @@ func ComputeSyncCommitteePubKeysCommitment(pubkeys []bls12381.G1Affine) [32]byte
 
 	// Hash only the first limb (Limbs[0]) of each X coordinate for efficiency
 	// This matches the circuit which hashes only Limbs[0]
-	for i := 0; i < 512; i++ {
+	for i := 0; i < len(pubkeys); i++ {
 		// Get the X coordinate as bytes (big-endian, 48 bytes = 384 bits)
 		xBytes := pubkeys[i].X.Bytes()
 
@@ -132,7 +132,9 @@ func ComputeSyncCommitteePubKeysCommitment(pubkeys []bls12381.G1Affine) [32]byte
 			input := xBytes[j*8 : j*8+8]
 			hasher.Write(input)
 
-			//fmt.Printf(new(big.Int).SetBytes(input).String() + ",")
+			if i < 5 {
+				fmt.Printf("0x%x\n", input)
+			}
 		}
 		//fmt.Printf("]\n")
 
@@ -140,6 +142,7 @@ func ComputeSyncCommitteePubKeysCommitment(pubkeys []bls12381.G1Affine) [32]byte
 
 	var commitment [32]byte
 	copy(commitment[:], hasher.Sum(nil))
+	fmt.Printf("commitment: %x\n", commitment)
 	return commitment
 }
 

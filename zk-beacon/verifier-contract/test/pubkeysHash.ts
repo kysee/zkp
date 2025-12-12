@@ -69,13 +69,15 @@ export async function putkeysHash(jsonPath: string) {
 
 // Create contract instance
     const lightClient = new ethers.Contract(
-        "0xb09da8a5B236fE0295A345035287e80bb0008290",
+        "0xe815357a70887f28ae1ac3D669E5404e6DcEc981",
         lightClientArtifact.abi,
         provider
     );
 
     console.log("pubkeys length:", pubkeys.length)
-    const ret = await lightClient.testPubKeysHash(pubkeys);
+    const ret = await lightClient.testPubKeysHash(pubkeys, {
+        gasLimit: 30000000  // Poseidon 해시 512개 처리
+    });
     return ret;
 }
 
