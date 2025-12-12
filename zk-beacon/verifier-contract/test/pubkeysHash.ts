@@ -15,6 +15,10 @@ interface PubkeysJson {
     pubkeys: string[];
 }
 
+function loadCurrSc(path: string) {
+    
+}
+
 export async function putkeysHash(jsonPath: string) {
     const raw = fs.readFileSync(path.resolve(jsonPath), "utf8");
     const parsed = JSON.parse(raw) as PubkeysJson | string[];

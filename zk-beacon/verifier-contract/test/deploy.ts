@@ -2,6 +2,7 @@ import { ethers, NonceManager } from "ethers";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
+import {loadNextSyncCommittee, nextSyncCommitteeToBytes} from "./utils.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -86,7 +87,7 @@ async function main() {
 
   // Test testPubKeysHash
   //const dummyPubKeys = "0x" + "00".repeat(24576);
-    const dummyPubKeys = "0x" + "00".repeat(48*100);
+    const dummyPubKeys = "0x" + "00".repeat(48*500);
     try {
         const estimatedGas = await lightClient.testPubKeysHash.estimateGas(dummyPubKeys, {gasLimit: 30000000});
         console.log("testPubKeysHash - Estimated gas needed:", estimatedGas.toString());
@@ -100,16 +101,18 @@ async function main() {
   console.log("testPubKeysHash result:", pubKeysHash);
 
   // Test testScRoot
-  const dummySyncCommittee = "0x" + "00".repeat(24624);
+    const nextSc = loadNextSyncCommittee();
+    const szNextSc = nextSyncCommitteeToBytes(nextSc);
+    console.log("szNextSc:", szNextSc.length);
     try {
-        const estimatedGas = await lightClient.testScRoot.estimateGas(dummySyncCommittee, {gasLimit: 30000000});
+        const estimatedGas = await lightClient.testScRoot.estimateGas(szNextSc, {gasLimit: 30000000});
         console.log("testScRoot - Estimated gas needed:", estimatedGas.toString());
         console.log("In millions:", (Number(estimatedGas) / 1_000_000).toFixed(2), "M");
     } catch (err) {
         console.error("estimateGas failed:", err);
     }
 
-  const scRoot = await lightClient.testScRoot(dummySyncCommittee);
+  const scRoot = await lightClient.testScRoot(szNextSc);
   console.log("testScRoot result:", scRoot);
 
   console.log("\n=== Deployment Complete ===");

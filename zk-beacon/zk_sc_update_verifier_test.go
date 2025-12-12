@@ -115,6 +115,7 @@ func assignNextSyncCommitteeToWitness(
 ) {
 	// Compute next_sync_committee root
 	nextSCRoot := update.Data.NextSyncCommittee.HashTreeRoot(configs.Mainnet, tree.GetHashFn())
+	fmt.Printf("next_sync_committee root: %v\n", nextSCRoot.String())
 
 	// Assign next_sync_committee root (public input)
 	for i := 0; i < 32; i++ {

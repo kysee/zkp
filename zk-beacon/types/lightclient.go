@@ -125,24 +125,16 @@ func ComputeSyncCommitteePubKeysCommitment(pubkeys []bls12381.G1Affine) [32]byte
 		// BLS12-381 field elements are 6 limbs × 64 bits = 384 bits
 		// In big-endian byte representation, the last 8 bytes correspond to Limbs[0]
 
-		//fmt.Printf("prover: pubkeys[%d].X.Limbs=[", i)
-
 		// use only limbs[0], limbs[1]
 		for j := 5; j >= 4; j-- {
 			input := xBytes[j*8 : j*8+8]
 			hasher.Write(input)
-
-			if i < 5 {
-				fmt.Printf("0x%x\n", input)
-			}
 		}
-		//fmt.Printf("]\n")
-
 	}
 
 	var commitment [32]byte
 	copy(commitment[:], hasher.Sum(nil))
-	fmt.Printf("commitment: %x\n", commitment)
+	fmt.Printf("sync_committee hash: 0x%x\n", commitment)
 	return commitment
 }
 
