@@ -2,7 +2,7 @@ import { ethers, NonceManager } from "ethers";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
-import {loadNextSyncCommittee, nextSyncCommitteeToBytes} from "./utils.ts";
+import {loadSyncCommittee, projectRoot, syncCommitteePubkeysToBytes, syncCommitteeToBytes} from "./utils.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -85,24 +85,25 @@ async function main() {
   // Test helper functions
   console.log("\n=== Testing Helper Functions ===");
 
-  // Test testPubKeysHash
+  // Test testPubKeysSha2
   //const dummyPubKeys = "0x" + "00".repeat(24576);
-    const dummyPubKeys = "0x" + "00".repeat(48*500);
+    const currSc = loadSyncCommittee(`${projectRoot()}/../data/curr-sc.json`);
+    const szCurrSc = syncCommitteePubkeysToBytes(currSc);
+    console.log("szCurrSc:", szCurrSc.length);
     try {
-        const estimatedGas = await lightClient.testPubKeysHash.estimateGas(dummyPubKeys, {gasLimit: 30000000});
-        console.log("testPubKeysHash - Estimated gas needed:", estimatedGas.toString());
+        const estimatedGas = await lightClient.testPubKeysSha2.estimateGas(szCurrSc, {gasLimit: 30000000});
+        console.log("testPubKeysSha2 - Estimated gas needed:", estimatedGas.toString());
         console.log("In millions:", (Number(estimatedGas) / 1_000_000).toFixed(2), "M");
     } catch (err) {
         console.error("estimateGas failed:", err);
     }
-
-
-    const pubKeysHash = await lightClient.testPubKeysHash(dummyPubKeys, {gasLimit: 30000000});
-  console.log("testPubKeysHash result:", pubKeysHash);
+    const pubKeysHash = await lightClient.testPubKeysSha2(szCurrSc, {gasLimit: 30000000});
+    // expected: 0x396609bcf49582474bf7c72c923ebc41f60cb28467fcdabe76c6728adba1c8e8
+    console.log("testPubKeysSha2 result:", pubKeysHash);
 
   // Test testScRoot
-    const nextSc = loadNextSyncCommittee();
-    const szNextSc = nextSyncCommitteeToBytes(nextSc);
+    const nextSc = loadSyncCommittee(`${projectRoot()}/../data/lcupdate.json`);
+    const szNextSc = syncCommitteeToBytes(nextSc);
     console.log("szNextSc:", szNextSc.length);
     try {
         const estimatedGas = await lightClient.testScRoot.estimateGas(szNextSc, {gasLimit: 30000000});

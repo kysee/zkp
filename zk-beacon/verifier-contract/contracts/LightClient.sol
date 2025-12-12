@@ -105,6 +105,30 @@ contract LightClient {
         return bytes32(state);
     }
 
+    function _pubKeysSha2(bytes8[] memory limbs) internal pure returns (bytes32) {
+        console.log("limbs.length", limbs.length);
+
+        // Pack all limbs into a single bytes array
+        bytes memory allLimbs = new bytes(limbs.length * 8);
+
+        for (uint256 i = 0; i < limbs.length; i++) {
+            bytes8 limb = limbs[i];
+            uint256 offset = i * 8;
+
+            // Copy limb bytes into allLimbs array
+            assembly {
+                mstore(add(add(allLimbs, 32), offset), limb)
+            }
+
+            if(i < 10) {
+                console.logBytes8(limbs[i]);
+            }
+        }
+
+        // Hash all limbs with SHA256
+        return sha256(allLimbs);
+    }
+
     function _scRoot(bytes memory syncCommitteeData) internal pure returns (bytes32) {
         // SSZ Merkleization for SyncCommittee Container:
         // struct SyncCommittee {
@@ -205,6 +229,34 @@ contract LightClient {
         }
 
         return _pubKeysHash(limbs);
+    }
+
+    // Test function for _pubKeysSha2
+    function testPubKeysSha2(bytes calldata pubKeys) public pure returns (bytes32) {
+        require(pubKeys.length % 48 == 0, "pubKeys length must be multiple of 48");
+
+        // Extract limbs from pubkeys
+        // Each pubkey (48 bytes) → extract limbs[4], limbs[5] (8 bytes each)
+        uint256 numPubkeys = pubKeys.length / 48;
+        bytes8[] memory limbs = new bytes8[](numPubkeys * 2);
+        for (uint256 i = 0; i < numPubkeys; i++) {
+            uint256 offset = i * 48;
+            bytes8 limb0;
+            bytes8 limb1;
+            assembly {
+                // Extract limbs[0] (bytes 40-47 of the pubkey)
+                let data0 := calldataload(add(pubKeys.offset, add(offset, 40)))
+                limb0 := shl(192, shr(192, data0))
+
+                // Extract limbs[1] (bytes 32-39 of the pubkey)
+                let data1 := calldataload(add(pubKeys.offset, add(offset, 32)))
+                limb1 := shl(192, shr(192, data1))
+            }
+            limbs[i * 2] = limb0;
+            limbs[i * 2 + 1] = limb1;
+        }
+
+        return _pubKeysSha2(limbs); //sha256(pubKeys);
     }
 
     // Test function for _scRoot
