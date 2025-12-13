@@ -85,21 +85,21 @@ async function main() {
   // Test helper functions
   console.log("\n=== Testing Helper Functions ===");
 
-  // Test testPubKeysSha2
+  // Test testPubKeysHash
   //const dummyPubKeys = "0x" + "00".repeat(24576);
     const currSc = loadSyncCommittee(`${projectRoot()}/../data/curr-sc.json`);
     const szCurrSc = syncCommitteePubkeysToBytes(currSc);
     console.log("szCurrSc:", szCurrSc.length);
     try {
-        const estimatedGas = await lightClient.testPubKeysSha2.estimateGas(szCurrSc, {gasLimit: 30000000});
-        console.log("testPubKeysSha2 - Estimated gas needed:", estimatedGas.toString());
+        const estimatedGas = await lightClient.testPubKeysHash.estimateGas(szCurrSc, {gasLimit: 30000000});
+        console.log("testPubKeysHash - Estimated gas needed:", estimatedGas.toString());
         console.log("In millions:", (Number(estimatedGas) / 1_000_000).toFixed(2), "M");
     } catch (err) {
         console.error("estimateGas failed:", err);
     }
-    const pubKeysHash = await lightClient.testPubKeysSha2(szCurrSc, {gasLimit: 30000000});
+    const pubKeysHash = await lightClient.testPubKeysHash(szCurrSc, {gasLimit: 30000000});
     // expected: 0x396609bcf49582474bf7c72c923ebc41f60cb28467fcdabe76c6728adba1c8e8
-    console.log("testPubKeysSha2 result:", pubKeysHash);
+    console.log("testPubKeysHash result:", pubKeysHash);
 
   // Test testScRoot
     const nextSc = loadSyncCommittee(`${projectRoot()}/../data/lcupdate.json`);

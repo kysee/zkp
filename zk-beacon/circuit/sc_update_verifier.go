@@ -13,6 +13,22 @@ import (
 	"github.com/consensys/gnark/std/math/uints"
 )
 
+// DOMAIN is the hardcoded domain for Ethereum mainnet Fulu fork
+// Domain = 0x07000000f52c15272cff99835cd05aa522af469210b5b2c8807e372b6b9ca539
+// Computed as: domain_type || fork_data_root[:28]
+// where fork_data_root = hash_tree_root(ForkData(fork_version, genesis_validators_root))
+//
+// Parameters used:
+// - domainType: 0x07000000 (DOMAIN_SYNC_COMMITTEE)
+// - forkVersion: 0x90000075 (Fulu fork)
+// - genesisValidatorsRoot: 0xd8ea171f3c94aea21ebc42a1ed61052acf3f9209c00e4efbaaddac09ed9b8078
+var DOMAIN = [32]uint8{
+	0x07, 0x00, 0x00, 0x00, 0xf5, 0x2c, 0x15, 0x27,
+	0x2c, 0xff, 0x99, 0x83, 0x5c, 0xd0, 0x5a, 0xa5,
+	0x22, 0xaf, 0x46, 0x92, 0x10, 0xb5, 0xb2, 0xc8,
+	0x80, 0x7e, 0x37, 0x2b, 0x6b, 0x9c, 0xa5, 0x39,
+}
+
 // ScUpdateVerifierCircuit verifies Ethereum beacon chain sync committee BLS signatures
 //
 // This circuit performs the complete verification flow:
@@ -29,15 +45,11 @@ import (
 // - Verification that the number of validators who signed the AggregatedSig exceeds 2/3 of the total
 type ScUpdateVerifierCircuit struct {
 	// BeaconBlockHeader fields (private inputs)
-	Slot          frontend.Variable     // uint64
-	ProposerIndex frontend.Variable     // uint64
-	ParentRoot    [32]frontend.Variable // bytes32
-	StateRoot     [32]frontend.Variable // bytes32
-	BodyRoot      [32]frontend.Variable // bytes32
-
-	// Domain for signingRoot computation (private input)
-	// Computed externally as: domain = domain_type || fork_data_root[:28]
-	Domain [32]frontend.Variable // bytes32
+	Slot          frontend.Variable // uint64
+	ProposerIndex frontend.Variable // uint64
+	ParentRoot    [32]uints.U8      // bytes32
+	StateRoot     [32]uints.U8      // bytes32
+	BodyRoot      [32]uints.U8      // bytes32
 
 	// Sync committee data (private inputs)
 	SyncCommitteePubKeys [512]sw_bls12381.G1Affine // 512 sync committee public keys
@@ -45,16 +57,16 @@ type ScUpdateVerifierCircuit struct {
 	AggregatedSig        sw_bls12381.G2Affine      // Aggregated signature
 
 	// Next sync committee Merkle proof data
-	NextSyncCommitteeBranch [6][32]frontend.Variable // Merkle branch proving inclusion in StateRoot
+	NextSyncCommitteeBranch [6][32]uints.U8 // Merkle branch proving inclusion in StateRoot
 
 	// Public inputs - verified by the circuit
-	SyncCommitteeHash     frontend.Variable     `gnark:",public"` // Poseidon hash commitment to sync committee pubkeys
-	NextSyncCommitteeRoot [32]frontend.Variable `gnark:",public"` // SSZ root of next_sync_committee
+	SyncCommitteeHash     [32]uints.U8 `gnark:",public"` // SHA2 hash commitment to sync committee pubkeys
+	NextSyncCommitteeRoot [32]uints.U8 `gnark:",public"` // SSZ root of next_sync_committee
 }
 
 // Define implements the circuit constraints
 func (c *ScUpdateVerifierCircuit) Define(api frontend.API) error {
-	// Step 1: Verify sync committee pubkeys commitment using Poseidon hash
+	// Step 1: Verify sync committee pubkeys commitment using SHA2 hash
 	err := c.verifySyncCommitteePubKeysCommitment(api)
 	if err != nil {
 		return fmt.Errorf("sync committee pubkeys commitment verification failed: %w", err)
@@ -97,20 +109,17 @@ func (c *ScUpdateVerifierCircuit) Define(api frontend.API) error {
 
 // computeBlockRoot computes the SSZ hash_tree_root of the beacon block header
 // This reuses the same logic as BlockRootHasher
-func (c *ScUpdateVerifierCircuit) computeBlockRoot(api frontend.API) [32]frontend.Variable {
+func (c *ScUpdateVerifierCircuit) computeBlockRoot(api frontend.API) [32]uints.U8 {
 	// Convert each field to a 32-byte chunk
 	slotChunk := c.serializeUint64ToChunk(api, c.Slot)
 	proposerChunk := c.serializeUint64ToChunk(api, c.ProposerIndex)
-	parentRootChunk := c.ParentRoot
-	stateRootChunk := c.StateRoot
-	bodyRootChunk := c.BodyRoot
 	zeroChunk := c.zeroChunk()
 
 	// Build Merkle tree (5 leaves + 3 zeros = 8 leaves total)
 	// Layer 1: Hash adjacent pairs
 	h01 := c.hashPair(api, slotChunk, proposerChunk)
-	h23 := c.hashPair(api, parentRootChunk, stateRootChunk)
-	h45 := c.hashPair(api, bodyRootChunk, zeroChunk)
+	h23 := c.hashPair(api, c.ParentRoot, c.StateRoot)
+	h45 := c.hashPair(api, c.BodyRoot, zeroChunk)
 	h67 := c.hashPair(api, zeroChunk, zeroChunk)
 
 	// Layer 2: Hash pairs from layer 1
@@ -131,10 +140,13 @@ func (c *ScUpdateVerifierCircuit) computeBlockRoot(api frontend.API) [32]fronten
 //	object_root: blockRoot (32 bytes)
 //	domain: domain (32 bytes)
 //
-// Note: domain is now provided as a pre-computed input from outside the circuit
-func (c *ScUpdateVerifierCircuit) computeSigningRoot(api frontend.API, blockRoot [32]frontend.Variable) [32]frontend.Variable {
+// Note: domain is hardcoded as a constant for Ethereum mainnet Fulu fork
+func (c *ScUpdateVerifierCircuit) computeSigningRoot(api frontend.API, blockRoot [32]uints.U8) [32]uints.U8 {
+	// Convert DOMAIN bytes to []uints.U8
+	domain := uints.NewU8Array(DOMAIN[:])
+
 	// Compute signingRoot = hash(blockRoot || domain)
-	signingRoot := c.hashPair(api, blockRoot, c.Domain)
+	signingRoot := c.hashPair(api, blockRoot, [32]uints.U8(domain))
 	return signingRoot
 }
 
@@ -142,7 +154,7 @@ func (c *ScUpdateVerifierCircuit) computeSigningRoot(api frontend.API, blockRoot
 // using expand_message_xmd(SHA-256) and ETH2 DST.
 func (c *ScUpdateVerifierCircuit) hashToG2InCircuit(
 	api frontend.API,
-	signingRoot [32]frontend.Variable,
+	signingRoot [32]uints.U8,
 ) (*sw_bls12381.G2Affine, error) {
 
 	// 1) G2 helper
@@ -187,7 +199,7 @@ func (c *ScUpdateVerifierCircuit) hashToG2InCircuit(
 // u[i].A1 = OS2IP(tv[i][1]) mod p
 func (c *ScUpdateVerifierCircuit) hashToFieldBLS12381Fp2(
 	api frontend.API,
-	signingRoot [32]frontend.Variable,
+	signingRoot [32]uints.U8,
 ) ([2]fields_bls12381.E2, error) {
 
 	const (
@@ -197,10 +209,7 @@ func (c *ScUpdateVerifierCircuit) hashToFieldBLS12381Fp2(
 	)
 
 	// 1) convert signingRoot -> []uints.U8 (message)
-	msg := make([]uints.U8, 32)
-	for i := 0; i < 32; i++ {
-		msg[i] = uints.U8{Val: signingRoot[i]}
-	}
+	msg := signingRoot
 
 	// 2) DST for Ethereum BLS signatures
 	dstBytes := []byte("BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_")
@@ -221,7 +230,7 @@ func (c *ScUpdateVerifierCircuit) hashToFieldBLS12381Fp2(
 
 	// 3) expand_message_xmd(SHA-256)
 	lenInBytes := count * m * L // 256
-	uniform, err := expandMessageXMD_SHA256(api, msg, dst, lenInBytes)
+	uniform, err := expandMessageXMD_SHA256(api, msg[:], dst, lenInBytes)
 	if err != nil {
 		return [2]fields_bls12381.E2{}, fmt.Errorf("expand_message_xmd: %w", err)
 	}
@@ -393,25 +402,21 @@ func (c *ScUpdateVerifierCircuit) verifySyncCommitteePubKeysCommitment(api front
 		return fmt.Errorf("failed to create SHA2 hasher: %w", err)
 	}
 
-	// Hash the first two limbs of each X coordinate
+	// BLS public key is 48 bytes long, so we hash the last two limbs of x coordinate.
+	// Limbs[0] is the least significant limb of x coordinate.
 	for i := 0; i < 512; i++ {
-		// Serialize the first limb (Limbs[0])
-		limb0Bytes := c.serializeLimbTo8Bytes(api, c.SyncCommitteePubKeys[i].X.Limbs[0])
-		hasher.Write(limb0Bytes)
-
-		// Serialize the second limb (Limbs[1])
-		limb1Bytes := c.serializeLimbTo8Bytes(api, c.SyncCommitteePubKeys[i].X.Limbs[1])
-		hasher.Write(limb1Bytes)
+		//xbytes := c.serializeLimbTo8Bytes(api, c.SyncCommitteePubKeys[i].X.Limbs[1])
+		//hasher.Write(xbytes)
+		xbytes := c.serializeLimbTo8Bytes(api, c.SyncCommitteePubKeys[i].X.Limbs[0])
+		hasher.Write(xbytes)
 	}
 
 	// Compute hash
 	hashResult := hasher.Sum() // Returns []uints.U8 of length 32
 
-	// Convert hash bytes to a single frontend.Variable
-	commitment := c.hashBytesToVariable(api, hashResult)
-
-	// Verify commitment matches public input
-	api.AssertIsEqual(commitment, c.SyncCommitteeHash)
+	for i := 0; i < 32; i++ {
+		api.AssertIsEqual(hashResult[i].Val, c.SyncCommitteeHash[i].Val)
+	}
 
 	return nil
 }
@@ -495,21 +500,6 @@ func (c *ScUpdateVerifierCircuit) verifyBLSSignature(api frontend.API, aggregate
 	return nil
 }
 
-// serializeG1FieldElement serializes a field element to bytes for hashing
-func (c *ScUpdateVerifierCircuit) serializeG1FieldElement(api frontend.API, elem *emulated.Element[sw_bls12381.BaseField]) []uints.U8 {
-	// Convert field element to bytes (48 bytes for BLS12-381)
-	// This is a simplified version - for production, use proper serialization
-	bytes := make([]uints.U8, 48)
-
-	// Convert each limb to bytes
-	// Note: This is a placeholder - actual implementation would need proper big-endian serialization
-	for i := 0; i < 48; i++ {
-		bytes[i] = uints.NewU8(0)
-	}
-
-	return bytes
-}
-
 // verifyNextSyncCommitteeMerkleProof verifies that next_sync_committee root is included in StateRoot
 // using the SSZ Merkle proof (next_sync_committee_branch).
 //
@@ -553,7 +543,7 @@ func (c *ScUpdateVerifierCircuit) verifyNextSyncCommitteeMerkleProof(api fronten
 
 	// The final computed root must equal the StateRoot from the BeaconBlockHeader
 	for i := 0; i < 32; i++ {
-		api.AssertIsEqual(current[i], c.StateRoot[i])
+		api.AssertIsEqual(current[i].Val, c.StateRoot[i].Val)
 	}
 
 	return nil
@@ -563,7 +553,7 @@ func (c *ScUpdateVerifierCircuit) verifyNextSyncCommitteeMerkleProof(api fronten
 
 // serializeLimbTo8Bytes converts a limb (frontend.Variable) to 8 bytes (64 bits, big-endian)
 func (c *ScUpdateVerifierCircuit) serializeLimbTo8Bytes(api frontend.API, limb frontend.Variable) []uints.U8 {
-	// Convert limb to 64 bits
+	// Convert limb to 64 bits (little-endian)
 	bits := api.ToBinary(limb, 64)
 	bytes := make([]uints.U8, 8)
 
@@ -582,18 +572,9 @@ func (c *ScUpdateVerifierCircuit) serializeLimbTo8Bytes(api frontend.API, limb f
 	return bytes
 }
 
-// hashBytesToVariable converts SHA2 hash bytes to a single frontend.Variable
-func (c *ScUpdateVerifierCircuit) hashBytesToVariable(api frontend.API, hashBytes []uints.U8) frontend.Variable {
-	// Convert bytes to a single frontend.Variable by interpreting as big-endian number
-	var result frontend.Variable = 0
-	for i := 0; i < len(hashBytes); i++ {
-		result = api.Add(api.Mul(result, 256), hashBytes[i].Val)
-	}
-	return result
-}
-
-func (c *ScUpdateVerifierCircuit) serializeUint64ToChunk(api frontend.API, value frontend.Variable) [32]frontend.Variable {
-	var chunk [32]frontend.Variable
+// serializeUint64ToChunk converts a 64-bit unsigned integer into a 32-byte array chunk with little-endian encoding.
+func (c *ScUpdateVerifierCircuit) serializeUint64ToChunk(api frontend.API, value frontend.Variable) [32]uints.U8 {
+	var chunk [32]uints.U8
 
 	// Convert value to 64 bits (little-endian)
 	bits := api.ToBinary(value, 64)
@@ -606,53 +587,38 @@ func (c *ScUpdateVerifierCircuit) serializeUint64ToChunk(api frontend.API, value
 			power := 1 << bitIdx
 			byteValue = api.Add(byteValue, api.Mul(bit, power))
 		}
-		chunk[byteIdx] = byteValue
+		chunk[byteIdx] = uints.U8{Val: byteValue}
 	}
 
 	// Remaining 24 bytes are zero-padded
 	for i := 8; i < 32; i++ {
-		chunk[i] = 0
+		chunk[i] = uints.NewU8(0)
 	}
 
 	return chunk
 }
 
-func (c *ScUpdateVerifierCircuit) zeroChunk() [32]frontend.Variable {
-	var chunk [32]frontend.Variable
+func (c *ScUpdateVerifierCircuit) zeroChunk() [32]uints.U8 {
+	var chunk [32]uints.U8
 	for i := 0; i < 32; i++ {
-		chunk[i] = 0
+		chunk[i] = uints.NewU8(0)
 	}
 	return chunk
 }
 
-func (c *ScUpdateVerifierCircuit) hashPair(api frontend.API, left, right [32]frontend.Variable) [32]frontend.Variable {
+// hashPair computes the SHA256 hash of two 32-byte arrays (left and right) and returns the resulting 32-byte hash.
+func (c *ScUpdateVerifierCircuit) hashPair(api frontend.API, left, right [32]uints.U8) [32]uints.U8 {
 	// Create a new SHA256 hasher
 	hasher, err := sha2.New(api)
 	if err != nil {
 		panic(err)
 	}
 
-	// Convert left and right chunks to []uints.U8
-	leftBytes := make([]uints.U8, 32)
-	rightBytes := make([]uints.U8, 32)
-
-	for i := 0; i < 32; i++ {
-		leftBytes[i] = uints.U8{Val: left[i]}
-		rightBytes[i] = uints.U8{Val: right[i]}
-	}
-
 	// Write 64 bytes total (left || right)
-	hasher.Write(leftBytes)
-	hasher.Write(rightBytes)
+	hasher.Write(left[:])
+	hasher.Write(right[:])
 
 	// Compute SHA256 hash
 	hashResult := hasher.Sum()
-
-	// Convert hash result ([]uints.U8) back to [32]frontend.Variable
-	var result [32]frontend.Variable
-	for i := 0; i < 32; i++ {
-		result[i] = hashResult[i].Val
-	}
-
-	return result
+	return [32]uints.U8(hashResult)
 }

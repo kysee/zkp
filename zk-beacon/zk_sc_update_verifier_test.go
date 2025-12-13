@@ -15,6 +15,7 @@ import (
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/cs/r1cs"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bls12381"
+	"github.com/consensys/gnark/std/math/uints"
 	gnark_test "github.com/consensys/gnark/test"
 	"github.com/kysee/zkp/zk-beacon/circuit"
 	"github.com/kysee/zkp/zk-beacon/types"
@@ -119,13 +120,13 @@ func assignNextSyncCommitteeToWitness(
 
 	// Assign next_sync_committee root (public input)
 	for i := 0; i < 32; i++ {
-		witness.NextSyncCommitteeRoot[i] = nextSCRoot[i]
+		witness.NextSyncCommitteeRoot[i] = uints.NewU8(nextSCRoot[i])
 	}
 
 	// Assign next_sync_committee_branch (private input)
 	for i := 0; i < 6; i++ {
 		for j := 0; j < 32; j++ {
-			witness.NextSyncCommitteeBranch[i][j] = update.Data.NextSyncCommitteeBranch[i][j]
+			witness.NextSyncCommitteeBranch[i][j] = uints.NewU8(update.Data.NextSyncCommitteeBranch[i][j])
 		}
 	}
 }
@@ -178,18 +179,9 @@ func TestScUpdateVerifierCircuit_IsSolved(t *testing.T) {
 	witness.ProposerIndex = uint64(update.Data.AttestedHeader.Beacon.ProposerIndex)
 
 	for i := 0; i < 32; i++ {
-		witness.ParentRoot[i] = update.Data.AttestedHeader.Beacon.ParentRoot[i]
-		witness.StateRoot[i] = update.Data.AttestedHeader.Beacon.StateRoot[i]
-		witness.BodyRoot[i] = update.Data.AttestedHeader.Beacon.BodyRoot[i]
-	}
-
-	// Compute domain externally using types.ComputeDomain
-	domain, err := types.ComputeDomain(domainType, forkVersion, genesisValidatorsRootBytes)
-	require.NoError(t, err, "Failed to compute domain")
-
-	// Assign domain to witness
-	for i := 0; i < 32; i++ {
-		witness.Domain[i] = domain[i]
+		witness.ParentRoot[i] = uints.NewU8(update.Data.AttestedHeader.Beacon.ParentRoot[i])
+		witness.StateRoot[i] = uints.NewU8(update.Data.AttestedHeader.Beacon.StateRoot[i])
+		witness.BodyRoot[i] = uints.NewU8(update.Data.AttestedHeader.Beacon.BodyRoot[i])
 	}
 
 	// Assign sync committee public keys (PRIVATE INPUT)
@@ -199,10 +191,9 @@ func TestScUpdateVerifierCircuit_IsSolved(t *testing.T) {
 
 	// Compute commitment to sync committee public keys (PUBLIC INPUT)
 	commitment := types.ComputeSyncCommitteeHash(pubkeys[:])
-	witness.SyncCommitteeHash = commitment[:]
-	//for i := 0; i < 32; i++ {
-	//	witness.SyncCommitteeHash[i] = commitment[i]
-	//}
+	for i := 0; i < 32; i++ {
+		witness.SyncCommitteeHash[i] = uints.NewU8(commitment[i])
+	}
 
 	// Assign sync committee bits (PUBLIC INPUT)
 	for i := 0; i < 512; i++ {
@@ -276,20 +267,10 @@ func TestScUpdateVerifierCircuit(t *testing.T) {
 	// Assign BeaconBlockHeader fields
 	witness.Slot = uint64(update.Data.AttestedHeader.Beacon.Slot)
 	witness.ProposerIndex = uint64(update.Data.AttestedHeader.Beacon.ProposerIndex)
-
 	for i := 0; i < 32; i++ {
-		witness.ParentRoot[i] = update.Data.AttestedHeader.Beacon.ParentRoot[i]
-		witness.StateRoot[i] = update.Data.AttestedHeader.Beacon.StateRoot[i]
-		witness.BodyRoot[i] = update.Data.AttestedHeader.Beacon.BodyRoot[i]
-	}
-
-	// Compute domain externally using types.ComputeDomain
-	domain, err := types.ComputeDomain(domainType, forkVersion, genesisValidatorsRootBytes)
-	require.NoError(t, err, "Failed to compute domain")
-
-	// Assign domain to witness
-	for i := 0; i < 32; i++ {
-		witness.Domain[i] = domain[i]
+		witness.ParentRoot[i] = uints.NewU8(update.Data.AttestedHeader.Beacon.ParentRoot[i])
+		witness.StateRoot[i] = uints.NewU8(update.Data.AttestedHeader.Beacon.StateRoot[i])
+		witness.BodyRoot[i] = uints.NewU8(update.Data.AttestedHeader.Beacon.BodyRoot[i])
 	}
 
 	// Assign sync committee public keys (PRIVATE INPUT)
@@ -299,10 +280,9 @@ func TestScUpdateVerifierCircuit(t *testing.T) {
 
 	// Compute commitment to sync committee public keys (PUBLIC INPUT)
 	commitment := types.ComputeSyncCommitteeHash(pubkeys[:])
-	witness.SyncCommitteeHash = commitment[:]
-	//for i := 0; i < 32; i++ {
-	//	witness.SyncCommitteeHash[i] = commitment[i]
-	//}
+	for i := 0; i < 32; i++ {
+		witness.SyncCommitteeHash[i] = uints.NewU8(commitment[i])
+	}
 
 	// Assign sync committee bits (PUBLIC INPUT)
 	for i := 0; i < 512; i++ {
@@ -389,18 +369,10 @@ func TestScUpdateVerifierCircuitInvalidSignature(t *testing.T) {
 
 	witness.Slot = uint64(update.Data.AttestedHeader.Beacon.Slot)
 	witness.ProposerIndex = uint64(update.Data.AttestedHeader.Beacon.ProposerIndex)
-
 	for i := 0; i < 32; i++ {
-		witness.ParentRoot[i] = update.Data.AttestedHeader.Beacon.ParentRoot[i]
-		witness.StateRoot[i] = update.Data.AttestedHeader.Beacon.StateRoot[i]
-		witness.BodyRoot[i] = update.Data.AttestedHeader.Beacon.BodyRoot[i]
-	}
-
-	// Compute domain externally
-	domain, err := types.ComputeDomain(domainType, forkVersion, genesisValidatorsRootBytes)
-	require.NoError(t, err, "Failed to compute domain")
-	for i := 0; i < 32; i++ {
-		witness.Domain[i] = domain[i]
+		witness.ParentRoot[i] = uints.NewU8(update.Data.AttestedHeader.Beacon.ParentRoot[i])
+		witness.StateRoot[i] = uints.NewU8(update.Data.AttestedHeader.Beacon.StateRoot[i])
+		witness.BodyRoot[i] = uints.NewU8(update.Data.AttestedHeader.Beacon.BodyRoot[i])
 	}
 
 	// Assign sync committee public keys (PRIVATE INPUT)
@@ -410,10 +382,9 @@ func TestScUpdateVerifierCircuitInvalidSignature(t *testing.T) {
 
 	// Compute commitment to sync committee public keys (PUBLIC INPUT)
 	commitment := types.ComputeSyncCommitteeHash(pubkeys[:])
-	witness.SyncCommitteeHash = commitment[:]
-	//for i := 0; i < 32; i++ {
-	//	witness.SyncCommitteeHash[i] = commitment[i]
-	//}
+	for i := 0; i < 32; i++ {
+		witness.SyncCommitteeHash[i] = uints.NewU8(commitment[i])
+	}
 
 	// Assign sync committee bits (PUBLIC INPUT)
 	for i := 0; i < 512; i++ {
@@ -501,18 +472,10 @@ func TestScUpdateVerifierCircuitInvalidBlockRoot(t *testing.T) {
 
 	witness.Slot = uint64(update.Data.AttestedHeader.Beacon.Slot)
 	witness.ProposerIndex = uint64(update.Data.AttestedHeader.Beacon.ProposerIndex)
-
 	for i := 0; i < 32; i++ {
-		witness.ParentRoot[i] = update.Data.AttestedHeader.Beacon.ParentRoot[i]
-		witness.StateRoot[i] = update.Data.AttestedHeader.Beacon.StateRoot[i]
-		witness.BodyRoot[i] = invalidBlockRoot[i] //update.Data.AttestedHeader.Beacon.BodyRoot[i]
-	}
-
-	// Compute domain externally
-	domain, err := types.ComputeDomain(domainType, forkVersion, genesisValidatorsRootBytes)
-	require.NoError(t, err, "Failed to compute domain")
-	for i := 0; i < 32; i++ {
-		witness.Domain[i] = domain[i]
+		witness.ParentRoot[i] = uints.NewU8(update.Data.AttestedHeader.Beacon.ParentRoot[i])
+		witness.StateRoot[i] = uints.NewU8(update.Data.AttestedHeader.Beacon.StateRoot[i])
+		witness.BodyRoot[i] = uints.NewU8(update.Data.AttestedHeader.Beacon.BodyRoot[i])
 	}
 
 	// Assign sync committee public keys (PRIVATE INPUT)
@@ -522,10 +485,9 @@ func TestScUpdateVerifierCircuitInvalidBlockRoot(t *testing.T) {
 
 	// Compute commitment to sync committee public keys (PUBLIC INPUT)
 	commitment := types.ComputeSyncCommitteeHash(pubkeys[:])
-	witness.SyncCommitteeHash = commitment[:]
-	//for i := 0; i < 32; i++ {
-	//	witness.SyncCommitteeHash[i] = commitment[i]
-	//}
+	for i := 0; i < 32; i++ {
+		witness.SyncCommitteeHash[i] = uints.NewU8(commitment[i])
+	}
 
 	// Assign sync committee bits (PUBLIC INPUT)
 	for i := 0; i < 512; i++ {
@@ -585,17 +547,10 @@ func BenchmarkScUpdateVerifierCircuit(b *testing.B) {
 	witness := &circuit.ScUpdateVerifierCircuit{}
 	witness.Slot = uint64(update.Data.AttestedHeader.Beacon.Slot)
 	witness.ProposerIndex = uint64(update.Data.AttestedHeader.Beacon.ProposerIndex)
-
 	for i := 0; i < 32; i++ {
-		witness.ParentRoot[i] = update.Data.AttestedHeader.Beacon.ParentRoot[i]
-		witness.StateRoot[i] = update.Data.AttestedHeader.Beacon.StateRoot[i]
-		witness.BodyRoot[i] = update.Data.AttestedHeader.Beacon.BodyRoot[i]
-	}
-
-	// Compute domain externally
-	domain, _ := types.ComputeDomain(domainType, forkVersion, genesisValidatorsRootBytes)
-	for i := 0; i < 32; i++ {
-		witness.Domain[i] = domain[i]
+		witness.ParentRoot[i] = uints.NewU8(update.Data.AttestedHeader.Beacon.ParentRoot[i])
+		witness.StateRoot[i] = uints.NewU8(update.Data.AttestedHeader.Beacon.StateRoot[i])
+		witness.BodyRoot[i] = uints.NewU8(update.Data.AttestedHeader.Beacon.BodyRoot[i])
 	}
 
 	// Assign sync committee public keys (PRIVATE INPUT)
@@ -605,7 +560,9 @@ func BenchmarkScUpdateVerifierCircuit(b *testing.B) {
 
 	// Compute commitment to sync committee public keys (PUBLIC INPUT)
 	commitment := types.ComputeSyncCommitteeHash(pubkeys[:])
-	witness.SyncCommitteeHash = commitment[:]
+	for i := 0; i < 32; i++ {
+		witness.SyncCommitteeHash[i] = uints.NewU8(commitment[i])
+	}
 
 	// Assign sync committee bits (PUBLIC INPUT)
 	for i := 0; i < 512; i++ {

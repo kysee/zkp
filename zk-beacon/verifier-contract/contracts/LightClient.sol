@@ -55,78 +55,9 @@ contract LightClient {
         uint256[2] memory commitmentPok = [uint256(0), uint256(0)];
         verifier.verifyProof(proof, commitments, commitmentPok, input);
 
-        // If verification succeeds, compute and store Poseidon hash
-        // Extract limbs from pubkeys (first 24576 bytes, excluding aggregate_pubkey)
-        // Each pubkey (48 bytes) → extract limbs[4], limbs[5] (8 bytes each)
-        // 512 pubkeys × 2 limbs = 1024 limbs
-        bytes8[] memory limbs = new bytes8[](1024);
-        for (uint256 i = 0; i < 512; i++) {
-            uint256 offset = i * 48;
-            bytes8 limb0;
-            bytes8 limb1;
-            assembly {
-                // Extract limbs[4] (bytes 32-39 of the pubkey)
-                let data0 := calldataload(add(nextSc.offset, add(offset, 32)))
-                limb0 := shl(192, shr(192, data0))
-
-                // Extract limbs[5] (bytes 40-47 of the pubkey)
-                let data1 := calldataload(add(nextSc.offset, add(offset, 40)))
-                limb1 := shl(192, shr(192, data1))
-            }
-            limbs[i * 2] = limb0;
-            limbs[i * 2 + 1] = limb1;
-        }
-
-        // Compute Poseidon hash of pubkeys and update state
-        scPubkeysHash = _pubKeysHash(limbs);
+        // If verification succeeds, compute and store hash of nextSc's public keys
+        scPubkeysHash = _pubKeysHash(nextSc);
         period = newPeriod;
-    }
-
-    function _pubKeysHash(bytes8[] memory limbs) internal pure returns (bytes32) {
-        // Streaming Poseidon hash (Merkle-Damgård construction)
-        // state = Compress(state, data) for each data element
-        // which is equivalent to: state = PoseidonT3.hash([state, data])
-
-        uint256 state = 0; // Initial state
-
-        console.log("limbs.length", limbs.length);
-
-        for (uint256 i = 0; i < limbs.length; i++) {
-            // Convert bytes8 to uint256
-            uint256 data = uint256(uint64(limbs[i]));
-            // Compress: state = hash(state, data)
-            state = PoseidonT3.hash([state, data]);
-
-            if(i<10) {
-                console.logBytes8(limbs[i]);
-            }
-        }
-
-        return bytes32(state);
-    }
-
-    function _pubKeysSha2(bytes8[] memory limbs) internal pure returns (bytes32) {
-        console.log("limbs.length", limbs.length);
-
-        // Pack all limbs into a single bytes array
-        bytes memory allLimbs = new bytes(limbs.length * 8);
-
-        for (uint256 i = 0; i < limbs.length; i++) {
-            bytes8 limb = limbs[i];
-            uint256 offset = i * 8;
-
-            // Copy limb bytes into allLimbs array
-            assembly {
-                mstore(add(add(allLimbs, 32), offset), limb)
-            }
-
-            if(i < 10) {
-                console.logBytes8(limbs[i]);
-            }
-        }
-
-        // Hash all limbs with SHA256
-        return sha256(allLimbs);
     }
 
     function _scRoot(bytes memory syncCommitteeData) internal pure returns (bytes32) {
@@ -203,64 +134,34 @@ contract LightClient {
         return sha256(abi.encodePacked(pubkeysRoot, aggregatePubkeyRoot));
     }
 
-    // Test function for _pubKeysHash
-    function testPubKeysHash(bytes calldata pubKeys) public pure returns (bytes32) {
-        require(pubKeys.length % 48 == 0, "pubKeys length must be multiple of 48");
-
-        // Extract limbs from pubkeys
-        // Each pubkey (48 bytes) → extract limbs[4], limbs[5] (8 bytes each)
+    function _pubKeysHash(bytes calldata pubKeys) internal pure returns (bytes32) {
         uint256 numPubkeys = pubKeys.length / 48;
-        bytes8[] memory limbs = new bytes8[](numPubkeys * 2);
+        require(numPubkeys == 512, "pubKeys length must be 512");
+
+        bytes memory allLimbs = new bytes(numPubkeys * 16);
         for (uint256 i = 0; i < numPubkeys; i++) {
             uint256 offset = i * 48;
-            bytes8 limb0;
-            bytes8 limb1;
+            uint256 allLimbsOffset = i * 16;
+            bytes16 combined;
             assembly {
                 // Extract limbs[0] (bytes 40-47 of the pubkey)
                 let data0 := calldataload(add(pubKeys.offset, add(offset, 40)))
-                limb0 := shl(192, shr(192, data0))
-
                 // Extract limbs[1] (bytes 32-39 of the pubkey)
                 let data1 := calldataload(add(pubKeys.offset, add(offset, 32)))
-                limb1 := shl(192, shr(192, data1))
-            }
-            limbs[i * 2] = limb0;
-            limbs[i * 2 + 1] = limb1;
-        }
+                combined := or(shl(192, shr(192, data0)), shl(128, shr(192, data1)))
 
-        return _pubKeysHash(limbs);
+                mstore(add(add(allLimbs, 32), allLimbsOffset), combined)
+            }
+        }
+        return sha256(allLimbs);
     }
-
     // Test function for _pubKeysSha2
-    function testPubKeysSha2(bytes calldata pubKeys) public pure returns (bytes32) {
-        require(pubKeys.length % 48 == 0, "pubKeys length must be multiple of 48");
-
-        // Extract limbs from pubkeys
-        // Each pubkey (48 bytes) → extract limbs[4], limbs[5] (8 bytes each)
-        uint256 numPubkeys = pubKeys.length / 48;
-        bytes8[] memory limbs = new bytes8[](numPubkeys * 2);
-        for (uint256 i = 0; i < numPubkeys; i++) {
-            uint256 offset = i * 48;
-            bytes8 limb0;
-            bytes8 limb1;
-            assembly {
-                // Extract limbs[0] (bytes 40-47 of the pubkey)
-                let data0 := calldataload(add(pubKeys.offset, add(offset, 40)))
-                limb0 := shl(192, shr(192, data0))
-
-                // Extract limbs[1] (bytes 32-39 of the pubkey)
-                let data1 := calldataload(add(pubKeys.offset, add(offset, 32)))
-                limb1 := shl(192, shr(192, data1))
-            }
-            limbs[i * 2] = limb0;
-            limbs[i * 2 + 1] = limb1;
-        }
-
-        return _pubKeysSha2(limbs); //sha256(pubKeys);
+    function testPubKeysHash(bytes calldata data) public pure returns (bytes32) {
+        return _pubKeysHash(data);
     }
 
     // Test function for _scRoot
-    function testScRoot(bytes memory syncCommitteeData) public pure returns (bytes32) {
+    function testScRoot(bytes calldata syncCommitteeData) public pure returns (bytes32) {
         return _scRoot(syncCommitteeData);
     }
 }

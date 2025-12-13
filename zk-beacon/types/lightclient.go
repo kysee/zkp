@@ -119,17 +119,11 @@ func ComputeSyncCommitteeHash(pubkeys []bls12381.G1Affine) [32]byte {
 	for i := 0; i < len(pubkeys); i++ {
 		// Get the X coordinate as bytes (big-endian, 48 bytes = 384 bits)
 		xBytes := pubkeys[i].X.Bytes()
-
-		// BLS12-381 field elements are 6 limbs × 64 bits = 384 bits
-		// In big-endian byte representation:
-		// - limb[5] (Limbs[0] in circuit) = xBytes[40:48]
-		// - limb[4] (Limbs[1] in circuit) = xBytes[32:40]
-
-		// Hash limbs in big-endian format to match the circuit
-		for j := 5; j >= 4; j-- {
-			limbBytes := xBytes[j*8 : j*8+8]
-			hasher.Write(limbBytes)
-		}
+		bytesToHash := xBytes[40:] // [32:48] = 128bits
+		hasher.Write(bytesToHash)
+		//if i < 10 {
+		//	fmt.Printf("pubkey[%d] to hash: 0x%x\n", i, bytesToHash)
+		//}
 	}
 
 	var commitment [32]byte
