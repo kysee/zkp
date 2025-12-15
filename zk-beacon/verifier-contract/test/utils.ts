@@ -143,35 +143,35 @@ export interface ProofData {
 
 /**
  * Load proof data from JSON file
- * @param dataPath Path to proof.json file
+ * @param dataPath Path to proof-data.json file
  * @returns ProofData object containing proof, commitments, and commitmentPok
  */
-export function loadProof(dataPath: string): ProofData {
+export function loadProofData(dataPath: string): ProofData {
     const fileContent = fs.readFileSync(dataPath, 'utf8');
     const jsonData = JSON.parse(fileContent);
 
     if (!jsonData.proof || !Array.isArray(jsonData.proof)) {
-        throw new Error('Invalid proof.json: proof must be an array');
+        throw new Error('Invalid proof-data.json: proof must be an array');
     }
 
     if (!jsonData.commitments || !Array.isArray(jsonData.commitments)) {
-        throw new Error('Invalid proof.json: commitments must be an array');
+        throw new Error('Invalid proof-data.json: commitments must be an array');
     }
 
     if (!jsonData.commitmentPok || !Array.isArray(jsonData.commitmentPok)) {
-        throw new Error('Invalid proof.json: commitmentPok must be an array');
+        throw new Error('Invalid proof-data.json: commitmentPok must be an array');
     }
 
     if (jsonData.proof.length !== 8) {
-        throw new Error(`Invalid proof.json: proof must have 8 elements, got ${jsonData.proof.length}`);
+        throw new Error(`Invalid proof-data.json: proof must have 8 elements, got ${jsonData.proof.length}`);
     }
 
     if (jsonData.commitments.length !== 2) {
-        throw new Error(`Invalid proof.json: commitments must have 2 elements, got ${jsonData.commitments.length}`);
+        throw new Error(`Invalid proof-data.json: commitments must have 2 elements, got ${jsonData.commitments.length}`);
     }
 
     if (jsonData.commitmentPok.length !== 2) {
-        throw new Error(`Invalid proof.json: commitmentPok must have 2 elements, got ${jsonData.commitmentPok.length}`);
+        throw new Error(`Invalid proof-data.json: commitmentPok must have 2 elements, got ${jsonData.commitmentPok.length}`);
     }
 
     return {

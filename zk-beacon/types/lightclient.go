@@ -180,7 +180,6 @@ func CreateProofData(proofSolidity []byte) *ProofData {
 	proof := make([]HexBytes, 8)
 	for i := 0; i < len(proof); i++ {
 		proof[i] = proofSolidity[i*bn254_fr.Bytes : (i+1)*bn254_fr.Bytes]
-		fmt.Printf("proof[%d]: %x\n", i, proof[i])
 	}
 
 	startIdx0 := 8*bn254_fr.Bytes + 4
@@ -188,7 +187,6 @@ func CreateProofData(proofSolidity []byte) *ProofData {
 	for i := 0; i < len(commitments); i++ {
 		startIdx := startIdx0 + (i * bn254_fr.Bytes)
 		commitments[i] = proofSolidity[startIdx : startIdx+bn254_fr.Bytes]
-		fmt.Printf("commitments[%d] (%d..%d): %x\n", i, startIdx, startIdx+bn254_fr.Bytes, commitments[i])
 	}
 
 	return &ProofData{

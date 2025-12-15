@@ -2,7 +2,7 @@ import { ethers, NonceManager } from "ethers";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
-import {loadProof, loadSyncCommittee, projectRoot, syncCommitteePubkeysToBytes, syncCommitteeToBytes} from "./utils.ts";
+import {loadProofData, loadSyncCommittee, projectRoot, syncCommitteeToBytes} from "./utils.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -98,17 +98,26 @@ async function main() {
     const nextScRoot = await lightClient.testScRoot(szNextSc);
     console.log("testScRoot result:", nextScRoot);
 
-    const proofData = loadProof(`${projectRoot()}/../data/proof.json`)
+    const proofData = loadProofData(`${projectRoot()}/../data/proof-data.json`)
     try {
             const estimatedGas = await lightClient.updateSyncCommittee.estimateGas(
-                proofData.proof, proofData.commitments, proofData.commitmentPok,
-                slot, szNextSc,
-                {gasLimit: 30000000});
-            console.log("updateSyncCommitteeCompressed - Estimated gas needed:", estimatedGas.toString());
-            console.log("In millions:", (Number(estimatedGas) / 1_000_000).toFixed(2), "M");
-        } catch (err) {
-            console.error("estimateGas failed:", err);
-        }
+            proofData.proof, proofData.commitments, proofData.commitmentPok,
+            slot, szNextSc,
+            {gasLimit: 30000000});
+        console.log("updateSyncCommittee - Estimated gas needed:", estimatedGas.toString());
+        console.log("In millions:", (Number(estimatedGas) / 1_000_000).toFixed(2), "M");
+    } catch (err) {
+        console.error("estimateGas failed:", err);
+    }
+
+    await lightClient.updateSyncCommittee(
+        proofData.proof, proofData.commitments, proofData.commitmentPok,
+        slot, szNextSc,
+        {gasLimit: 30000000});
+    const newPeriod = await lightClient.period();
+    const newScPubkeysHash = await lightClient.scPubkeysHash();
+    console.log("Stored newPeriod:", newPeriod);
+    console.log("Stored newScPubkeysHash:", newScPubkeysHash);
 
   // const [compressedProof, compressedCommitments, compressedCommitmentPok] = await scUpdateVerifier.compressProof(proofData.proof, proofData.commitments, proofData.commitmentPok, {gasLimit: 30000000});
   //   console.log("\n=== Compressed Proof Data ===");
@@ -162,11 +171,6 @@ async function main() {
   //
 
   console.log("\n=== Deployment Complete ===");
-}
-
-
-async function pubkeyHash() {
-    
 }
 
 main()

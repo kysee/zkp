@@ -169,7 +169,7 @@ contract LightClient {
 
     function _pubKeysHash(bytes calldata pubKeys) internal pure returns (bytes32) {
         uint256 numPubkeys = pubKeys.length / 48;
-        require(numPubkeys == 512, "pubKeys length must be 512");
+        require(numPubkeys >= 512, "pubKeys length must be more than 512");
 
         bytes memory allLimbs = new bytes(numPubkeys * 16);
         for (uint256 i = 0; i < numPubkeys; i++) {

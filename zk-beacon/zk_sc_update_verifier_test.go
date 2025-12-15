@@ -238,7 +238,7 @@ func TestScUpdateVerifierCircuit(t *testing.T) {
 	require.NoError(t, err, "Failed to create public witness")
 
 	// Verify proof using pre-compiled verifying key
-	err = groth16.Verify(proof, blsVerifierVK, publicWitness)
+	err = groth16.Verify(proof, blsVerifierVK, publicWitness, backend.WithVerifierHashToFieldFunction(sha256.New()))
 	require.NoError(t, err, "Proof verification failed")
 
 	t.Logf("✓ Proof verification SUCCEEDED!")
