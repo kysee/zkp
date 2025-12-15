@@ -1,165 +1,38 @@
-## 12.11 (2)
+## Commit: 39fe78f8
 
-Compute the poseidon hash for only the curr_sync_committee.pubkeys.Limbs[0:1].
+### Features
 
-### Constraints
-| Circuit | Constraints |
-| --- | --- |
-|ScUpdateVerifierCircuit | 2907544 |
+- Use `[32]uints.U8` instead of `frontend.Variable` for `ScPubKeysHash`
 
 ### Benchmark
 
-goos: darwin
-goarch: arm64
-pkg: github.com/kysee/zkp/zk-beacon
-cpu: Apple M1 Max
-BenchmarkScUpdateVerifierCircuit
+- goos: darwin
+- goarch: amd64
+- cpu: Intel(R) Core(TM) i7-10700K CPU @ 3.80GHz
 
-| Operation | Time                |
-| --- |---------------------|
-| ProofGeneration | 9778210613 ns/op |
-| ProofVerification | 1080386 ns/op     |
+| Name              | Value |
+|-------------------| ----- |
+| Constraints       | 6285865 |
+| Public Inputs     | 65 |
+| ProofGeneration   | 20618443368 ns/op |
+| ProofVerification | 1078106 ns/op |
 
-## 12.11
+## Commit: 84347f9b
 
-Add the aggregation of curr_sync_committee.pubkeys.  
-Add the poseidon hash checking for curr_sync_committee.pubkeys.
+### Features
 
-### Constraints
-
-| Circuit | Constraints |
-| --- | --- |
-| ScUpdateVerifierCircuit | 3288472 |
+- Use sha256 to hash `ScPubKeysHash`
+- Verify BlS signature
+- Verify SSZ merkle proof of `NextScRoot`
 
 ### Benchmark
+- goos: darwin  
+- goarch: amd64  
+- cpu: Intel(R) Core(TM) i7-10700K CPU @ 3.80GHz  
 
-goos: darwin
-goarch: arm64
-pkg: github.com/kysee/zkp/zk-beacon
-cpu: Apple M1 Max
-BenchmarkScUpdateVerifierCircuit
-
-| Operation | Time                |
-| --- |---------------------|
-| ProofGeneration | 11363641574 ns/op |
-| ProofVerification | 1080946 ns/op     |
-
-## 12.06 
-
-Remove the aggregation of curr_sync_committee pubkeys from the BLSVerifierCircuit.
-
-### Constraints
-
-| Circuit | Constraints |
-| --- | --- |
-| BLSVerifierCircuit | 2491635 |
-| SyncCommitteeVerifierCircuit | 1249667 |
-
-### Benchmark
-
-goos: darwin
-goarch: arm64
-pkg: github.com/kysee/zkp/zk-beacon
-cpu: Apple M1 Max
-BenchmarkBLSVerifierCircuit
-
-| Operation | Time                |
-| --- |---------------------|
-| ProofGeneration | 10317260292 ns/op |
-| ProofVerification | 1772195 ns/op     |
-
-## 12.05 (2)
-
-Add to verify that the state_root includes the next_sync_committee.
-
-### Constraints
-
-| Circuit | Constraints |
-| --- | --- |
-| BLSVerifierCircuit | 2717079 |
-| SyncCommitteeVerifierCircuit | 1249667 |
-
-### Benchmark
-
-goos: darwin  
-goarch: arm64  
-pkg: github.com/kysee/zkp/zk-beacon  
-cpu: Apple M1 Max  
-BenchmarkBLSVerifierCircuit
-
-| Operation | Time                |
-| --- |---------------------|
-| ProofGeneration | 10406593625 ns/op |
-| ProofVerification | 1796808 ns/op     |
-
-## 12.05 (1)
-
-Add aggregation of BLS pubkeys of curr_sync_committee to BLSVerifierCircuit.
-
-### Constraints
-
-| Circuit | Constraints |
-| --- | --- |
-| BLSVerifierCircuit | 2401385 |
-| SyncCommitteeVerifierCircuit | 1249667 |
-
-### Benchmark
-
-goos: darwin  
-goarch: arm64  
-pkg: github.com/kysee/zkp/zk-beacon  
-cpu: Apple M1 Max  
-BenchmarkBLSVerifierCircuit  
-
-| Operation | Time                |
-| --- |---------------------|
-| ProofGeneration | 9484611792 ns/op |
-| ProofVerification | 1745043 ns/op     |
-
-## 12.04 (2)
-
-To computing domain is executed out of the Circuit.
-
-### Constraints
-
-| Circuit | Constraints |
-| --- | --- |
-| BLSVerifierCircuit | 2175941 |
-| SyncCommitteeVerifierCircuit | 1249667 |
-
-### Benchmark
-
-goos: darwin  
-goarch: amd64  
-pkg: github.com/kysee/zkp/zk-beacon  
-cpu: Intel(R) Core(TM) i7-10700K CPU @ 3.80GHz  
-BenchmarkBLSVerifierCircuit
-
-| Operation | Time                |
-| --- |---------------------|
-| ProofGeneration | 8138772207 ns/op |
-| ProofVerification | 1098043 ns/op     |
-
-## 12.05 (1)
-
-All verifications are executed in the Circuit.
-
-### Constraints
- 
-| Circuit | Constraints |
-| --- | --- |
-| BLSVerifierCircuit | 2227930 |
-| SyncCommitteeVerifierCircuit | 1249667 |
-
-### Benchmark
-
-goos: darwin  
-goarch: amd64  
-pkg: github.com/kysee/zkp/zk-beacon  
-cpu: Intel(R) Core(TM) i7-10700K CPU @ 3.80GHz  
-BenchmarkBLSVerifierCircuit
-
-| Operation | Time                |
-| --- |---------------------|
-| ProofGeneration | 8418840309 ns/op |
-| ProofVerification | 1094455 ns/op     |
+| Name              | Value |
+|-------------------| ----- |
+| Constraints       | 6285865 |
+| Public Inputs     | 34 |
+| ProofGeneration   | 20899166401 ns/op |
+| ProofVerification | 1076800 ns/op |
