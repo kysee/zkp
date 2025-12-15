@@ -35,7 +35,7 @@ var DOMAIN = [32]uint8{
 // 1. Computes blockRoot from BeaconBlockHeader fields
 // 2. Computes signingRoot = hash(blockRoot, domain)
 // 3. Computes signingRootG2 = hash-to-curve(signingRoot) IN-CIRCUIT
-// 4. Verifies sync committee pubkey commitment
+// 4. Verifies sync committee pubkey hash(sha2)
 // 5. Aggregates public keys based on sync committee bits
 // 6. Verifies BLS signature: e(aggregatedPubKey, H(signingRoot)) == e(G1, signature)
 // 7. Verifies next_sync_committee is included in StateRoot via SSZ Merkle proof
@@ -60,16 +60,16 @@ type ScUpdateVerifierCircuit struct {
 	NextScBranch [6][32]uints.U8 // Merkle branch proving inclusion in StateRoot
 
 	// Public inputs - verified by the circuit
-	ScPubKeysHash [32]uints.U8 `gnark:",public"` // SHA2 hash commitment to sync committee pubkeys
+	ScPubKeysHash [32]uints.U8 `gnark:",public"` // SHA2 hash to sync committee pubkeys
 	NextScRoot    [32]uints.U8 `gnark:",public"` // SSZ root of next_sync_committee
 }
 
 // Define implements the circuit constraints
 func (c *ScUpdateVerifierCircuit) Define(api frontend.API) error {
-	// Step 1: Verify sync committee pubkeys commitment using SHA2 hash
+	// Step 1: Verify sync committee pubkeys hash using SHA2
 	err := c.verifyScPubKeysHash(api)
 	if err != nil {
-		return fmt.Errorf("sync committee pubkeys commitment verification failed: %w", err)
+		return fmt.Errorf("sync committee pubkeys hash verification failed: %w", err)
 	}
 
 	// Step 2: Aggregate public keys based on sync committee bits

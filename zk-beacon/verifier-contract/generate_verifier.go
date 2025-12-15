@@ -2,22 +2,24 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"os"
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend/groth16"
-	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/frontend/cs/r1cs"
-	"github.com/kysee/zkp/zk-beacon/circuit"
+	"github.com/consensys/gnark/backend/solidity"
 )
 
 func main() {
-	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit.ScUpdateVerifierCircuit{})
+	// Read the verifying key from file (to ensure consistency with proving key)
+	vkFile, err := os.Open("../.build/ScUpdateVerifierCircuit.vk")
 	if err != nil {
 		panic(err)
 	}
+	defer vkFile.Close()
 
-	_, vk, err := groth16.Setup(ccs)
+	vk := groth16.NewVerifyingKey(ecc.BN254)
+	_, err = vk.ReadFrom(vkFile)
 	if err != nil {
 		panic(err)
 	}
@@ -27,7 +29,7 @@ func main() {
 	}
 	// Solidity verifier 생성
 	var buf bytes.Buffer
-	err = vk.ExportSolidity(&buf)
+	err = vk.ExportSolidity(&buf, solidity.WithHashToFieldFunction(sha256.New()))
 	if err != nil {
 		panic(err)
 	}

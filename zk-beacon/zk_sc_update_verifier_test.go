@@ -1,6 +1,7 @@
 package zk_beacon
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -122,9 +123,9 @@ func TestScUpdateVerifierCircuit_IsSolved(t *testing.T) {
 	assert := gnark_test.NewAssert(t)
 	err = gnark_test.IsSolved(&circuit.ScUpdateVerifierCircuit{}, witness, ecc.BN254.ScalarField())
 	assert.NoError(err, "Circuit constraints should be satisfied")
-
 	t.Logf("✓ Proof solving SUCCEEDED!")
 
+	assert.CheckCircuit(&circuit.ScUpdateVerifierCircuit{}, gnark_test.WithCurves(ecc.BN254), gnark_test.WithValidAssignment(witness), gnark_test.WithBackends(backend.GROTH16))
 }
 
 func TestScUpdateVerifierCircuit(t *testing.T) {
@@ -214,6 +215,7 @@ func TestScUpdateVerifierCircuit(t *testing.T) {
 
 	// Create proof using pre-compiled circuit and keys
 	proof, err := groth16.Prove(blsVerifierCCS, blsVerifierPK, fullWitness,
+		backend.WithProverHashToFieldFunction(sha256.New()),
 		backend.WithSolverOptions(
 			solver.WithLogger(gnarkLogger),
 		))
@@ -223,6 +225,10 @@ func TestScUpdateVerifierCircuit(t *testing.T) {
 	require.True(t, ok, "proof does not implement MarshalSolidity()")
 
 	proofSolidity := _proof.MarshalSolidity()
+	proofData := types.CreateProofData(proofSolidity)
+	jsonBlob, _ := json.MarshalIndent(proofData, "", "  ")
+	fmt.Printf("ProofData (JSON): %s\n", string(jsonBlob))
+
 	fmt.Printf("Proof (solidity, %d bytes): 0x%x\n", len(proofSolidity), proofSolidity)
 
 	t.Logf("Proof generated successfully")

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/consensys/gnark-crypto/ecc/bls12-381"
+	bn254_fr "github.com/consensys/gnark-crypto/ecc/bn254/fr"
 	zrntaltair "github.com/protolambda/zrnt/eth2/beacon/altair"
 	zrntcommon "github.com/protolambda/zrnt/eth2/beacon/common"
 )
@@ -166,4 +167,33 @@ func ComputeDomain(domainType []byte, forkVersion []byte, genesisValidatorsRoot 
 	copy(domain[4:], forkDataRoot[:28])
 
 	return domain, nil
+}
+
+type ProofData struct {
+	Proof         []HexBytes `json:"proof"`
+	Commitments   []HexBytes `json:"commitments"`
+	CommitmentPok []HexBytes `json:"commitmentPok"`
+}
+
+func CreateProofData(proofSolidity []byte) *ProofData {
+	// A, B, C
+	proof := make([]HexBytes, 8)
+	for i := 0; i < len(proof); i++ {
+		proof[i] = proofSolidity[i*bn254_fr.Bytes : (i+1)*bn254_fr.Bytes]
+		fmt.Printf("proof[%d]: %x\n", i, proof[i])
+	}
+
+	startIdx0 := 8*bn254_fr.Bytes + 4
+	commitments := make([]HexBytes, 4)
+	for i := 0; i < len(commitments); i++ {
+		startIdx := startIdx0 + (i * bn254_fr.Bytes)
+		commitments[i] = proofSolidity[startIdx : startIdx+bn254_fr.Bytes]
+		fmt.Printf("commitments[%d] (%d..%d): %x\n", i, startIdx, startIdx+bn254_fr.Bytes, commitments[i])
+	}
+
+	return &ProofData{
+		Proof:         proof,
+		Commitments:   commitments[0:2],
+		CommitmentPok: commitments[2:4],
+	}
 }

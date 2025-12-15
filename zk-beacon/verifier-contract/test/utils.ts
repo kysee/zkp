@@ -85,7 +85,7 @@ export function syncCommitteeToBytes(sc: SyncCommittee): Uint8Array {
         throw new Error(`Expected 512 pubkeys, got ${pubkeys.length}`);
     }
 
-    // 총 길이: 512 * 48 + 48 = 24624 bytes
+    // total length: 512 * 48 + 48 = 24624 bytes
     const result = new Uint8Array(512 * 48 + 48);
     let offset = 0;
 
@@ -134,3 +134,50 @@ export function syncCommitteeToBytes(sc: SyncCommittee): Uint8Array {
 
     return result;
 }
+
+export interface ProofData {
+    proof: string[];
+    commitments: string[];
+    commitmentPok: string[];
+}
+
+/**
+ * Load proof data from JSON file
+ * @param dataPath Path to proof.json file
+ * @returns ProofData object containing proof, commitments, and commitmentPok
+ */
+export function loadProof(dataPath: string): ProofData {
+    const fileContent = fs.readFileSync(dataPath, 'utf8');
+    const jsonData = JSON.parse(fileContent);
+
+    if (!jsonData.proof || !Array.isArray(jsonData.proof)) {
+        throw new Error('Invalid proof.json: proof must be an array');
+    }
+
+    if (!jsonData.commitments || !Array.isArray(jsonData.commitments)) {
+        throw new Error('Invalid proof.json: commitments must be an array');
+    }
+
+    if (!jsonData.commitmentPok || !Array.isArray(jsonData.commitmentPok)) {
+        throw new Error('Invalid proof.json: commitmentPok must be an array');
+    }
+
+    if (jsonData.proof.length !== 8) {
+        throw new Error(`Invalid proof.json: proof must have 8 elements, got ${jsonData.proof.length}`);
+    }
+
+    if (jsonData.commitments.length !== 2) {
+        throw new Error(`Invalid proof.json: commitments must have 2 elements, got ${jsonData.commitments.length}`);
+    }
+
+    if (jsonData.commitmentPok.length !== 2) {
+        throw new Error(`Invalid proof.json: commitmentPok must have 2 elements, got ${jsonData.commitmentPok.length}`);
+    }
+
+    return {
+        proof: jsonData.proof,
+        commitments: jsonData.commitments,
+        commitmentPok: jsonData.commitmentPok
+    };
+}
+

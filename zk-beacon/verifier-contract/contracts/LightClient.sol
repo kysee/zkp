@@ -19,14 +19,14 @@ contract LightClient {
         verifier = ScUpdateVerifier(_verifierAddress);
     }
 
-    function updateSyncCommittee(
+    function updateSyncCommittee (
+        uint256[8] calldata proof,
+        uint256[2] calldata commitments,
+        uint256[2] calldata commitmentPok,
         uint256 slot,
-        bytes calldata scBits,
-        bytes calldata nextSc,
-        uint256[8] calldata proof
+        bytes calldata nextSc
     ) external {
         // Validate inputs
-        require(scBits.length == 64, "Invalid scBits length"); // 512 bits = 64 bytes
         require(nextSc.length == 24624, "Invalid nextSc length"); // 513 * 48 bytes
 
         // Compute and validate period
@@ -52,13 +52,44 @@ contract LightClient {
         }
 
         // Call the verifier with [0,0] for commitments and commitmentPok
-        verifier.verifyProof(proof,
-            [uint256(0), uint256(0)],
-            [uint256(0), uint256(0)],
-            input);
+        verifier.verifyProof(proof,commitments, commitmentPok, input);
 
         // If verification succeeds, compute and store hash of nextSc's public keys
         scPubkeysHash = _pubKeysHash(nextSc);
+        period = newPeriod;
+    }
+
+    function updateSyncCommitteeCompressed (
+        uint256[4] calldata compressedProof,
+        uint256[1] calldata compressedCommitments,
+        uint256 compressedCommitmentPok,
+        uint256 slot,
+        bytes calldata nextScRoot
+    ) external {
+        // Compute and validate period
+        uint256 newPeriod = slot / (SLOTS_PER_EPOCH * EPOCHS_PER_SYNC_COMMITTEE_PERIOD);
+        require(newPeriod == period + 1, "Period must be exactly period + 1");
+
+        // Prepare public inputs for the verifier
+        // input[0..32] = scPubkeysHash (current sync committee)
+        // input[33..64] = NextSyncCommitteeRoot (32 bytes)
+        uint256[64] memory input;
+
+        // input[0] is the current sync committee commitment (syncCommitteeHash)
+        for(uint256 i=0; i<32; i++) {
+            input[i] = uint256(uint8(scPubkeysHash[i]));
+        }
+
+        // input[1..32] are the 32 bytes of nextScRoot
+        for (uint256 i = 0; i < 32; i++) {
+            input[i + 32] = uint256(uint8(nextScRoot[i]));
+        }
+
+        // Call the verifier with [0,0] for commitments and commitmentPok
+        verifier.verifyCompressedProof(compressedProof,compressedCommitments, compressedCommitmentPok, input);
+
+        // If verification succeeds, compute and store hash of nextSc's public keys
+        //scPubkeysHash = _pubKeysHash(nextSc);
         period = newPeriod;
     }
 
