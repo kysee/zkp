@@ -60,7 +60,6 @@ type ScUpdateVerifierCircuit struct {
 	NextScBranch [6][32]uints.U8 // Merkle branch proving inclusion in StateRoot
 
 	// Public inputs - verified by the circuit
-	HashIdxs      [1]uints.U8  `gnark:",public"`
 	ScPubKeysHash [32]uints.U8 `gnark:",public"` // SHA2 hash commitment to sync committee pubkeys
 	NextScRoot    [32]uints.U8 `gnark:",public"` // SSZ root of next_sync_committee
 }
@@ -68,7 +67,7 @@ type ScUpdateVerifierCircuit struct {
 // Define implements the circuit constraints
 func (c *ScUpdateVerifierCircuit) Define(api frontend.API) error {
 	// Step 1: Verify sync committee pubkeys commitment using SHA2 hash
-	err := c.verifyScPubKeysCommitment(api)
+	err := c.verifyScPubKeysHash(api)
 	if err != nil {
 		return fmt.Errorf("sync committee pubkeys commitment verification failed: %w", err)
 	}
@@ -393,10 +392,10 @@ func (c *ScUpdateVerifierCircuit) bytesToBLS12381FpMod(
 	return res, nil
 }
 
-//// verifyScPubKeysCommitment verifies that the commitment to sync committee pubkeys matches
+//// verifyScPubKeysHash verifies that the commitment to sync committee pubkeys matches
 //// Uses SHA2 hash for compatibility
 //// Only hashes the first two limbs (Limbs[0], Limbs[1]) of each X coordinate for efficiency
-//func (c *ScUpdateVerifierCircuit) verifyScPubKeysCommitment(api frontend.API) error {
+//func (c *ScUpdateVerifierCircuit) verifyScPubKeysHash(api frontend.API) error {
 //	// Create SHA2 hasher
 //	hasher, err := sha2.New(api)
 //	if err != nil {
@@ -422,7 +421,7 @@ func (c *ScUpdateVerifierCircuit) bytesToBLS12381FpMod(
 //	return nil
 //}
 
-func (c *ScUpdateVerifierCircuit) verifyScPubKeysCommitment(api frontend.API) error {
+func (c *ScUpdateVerifierCircuit) verifyScPubKeysHash(api frontend.API) error {
 	// Create SHA2 hasher
 	hasher, err := sha2.New(api)
 	if err != nil {
