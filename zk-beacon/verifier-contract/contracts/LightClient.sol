@@ -3,7 +3,6 @@ pragma solidity ^0.8.0;
 
 import "hardhat/console.sol";
 import "./ScUpdateVerifier.sol";
-import "./PoseidonT3.sol";
 
 contract LightClient {
     uint256 public period;
@@ -38,22 +37,25 @@ contract LightClient {
         bytes32 nextScRoot = _scRoot(nextSc);
 
         // Prepare public inputs for the verifier
-        // input[0] = SyncCommitteePubKeysCommit (current sync committee)
-        // input[1..32] = NextSyncCommitteeRoot (32 bytes)
-        uint256[33] memory input;
+        // input[0..32] = scPubkeysHash (current sync committee)
+        // input[33..64] = NextSyncCommitteeRoot (32 bytes)
+        uint256[64] memory input;
 
         // input[0] is the current sync committee commitment (syncCommitteeHash)
-        input[0] = uint256(scPubkeysHash);
+        for(uint256 i=0; i<32; i++) {
+            input[i] = uint256(uint8(scPubkeysHash[i]));
+        }
 
         // input[1..32] are the 32 bytes of nextScRoot
         for (uint256 i = 0; i < 32; i++) {
-            input[i + 1] = uint256(uint8(nextScRoot[i]));
+            input[i + 32] = uint256(uint8(nextScRoot[i]));
         }
 
         // Call the verifier with [0,0] for commitments and commitmentPok
-        uint256[2] memory commitments = [uint256(0), uint256(0)];
-        uint256[2] memory commitmentPok = [uint256(0), uint256(0)];
-        verifier.verifyProof(proof, commitments, commitmentPok, input);
+        verifier.verifyProof(proof,
+            [uint256(0), uint256(0)],
+            [uint256(0), uint256(0)],
+            input);
 
         // If verification succeeds, compute and store hash of nextSc's public keys
         scPubkeysHash = _pubKeysHash(nextSc);
@@ -140,17 +142,19 @@ contract LightClient {
 
         bytes memory allLimbs = new bytes(numPubkeys * 16);
         for (uint256 i = 0; i < numPubkeys; i++) {
-            uint256 offset = i * 48;
+            uint256 offset = i * 48; // pubkey's size
             uint256 allLimbsOffset = i * 16;
-            bytes16 combined;
+//            bytes16 combined;
             assembly {
-                // Extract limbs[0] (bytes 40-47 of the pubkey)
-                let data0 := calldataload(add(pubKeys.offset, add(offset, 40)))
-                // Extract limbs[1] (bytes 32-39 of the pubkey)
-                let data1 := calldataload(add(pubKeys.offset, add(offset, 32)))
-                combined := or(shl(192, shr(192, data0)), shl(128, shr(192, data1)))
+//                // Extract limbs[0] (bytes 40-47 of the pubkey)
+//                let limbs0 := calldataload(add(pubKeys.offset, add(offset, 40)))
+//                // Extract limbs[1] (bytes 32-39 of the pubkey)
+//                let limbs1 := calldataload(add(pubKeys.offset, add(offset, 32)))
+//                // Concat limbs[1] || limbs[0]
+                let lsb16 := calldataload(add(pubKeys.offset, add(offset, 32))) // [32..48] = 16bytes = 128bits
+                lsb16 := shl(128, shr(128, lsb16))
 
-                mstore(add(add(allLimbs, 32), allLimbsOffset), combined)
+                mstore(add(add(allLimbs, 32), allLimbsOffset), lsb16)
             }
         }
         return sha256(allLimbs);

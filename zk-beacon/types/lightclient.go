@@ -119,7 +119,7 @@ func ComputeSyncCommitteeHash(pubkeys []bls12381.G1Affine) [32]byte {
 	for i := 0; i < len(pubkeys); i++ {
 		// Get the X coordinate as bytes (big-endian, 48 bytes = 384 bits)
 		xBytes := pubkeys[i].X.Bytes()
-		bytesToHash := xBytes[40:] // [32:48] = 128bits
+		bytesToHash := xBytes[32:] // [32..48] = 128bits. it's for X.Limbs[1] || X.Limbs[0] in the circuit
 		hasher.Write(bytesToHash)
 		//if i < 10 {
 		//	fmt.Printf("pubkey[%d] to hash: 0x%x\n", i, bytesToHash)

@@ -52,22 +52,23 @@ type ScUpdateVerifierCircuit struct {
 	BodyRoot      [32]uints.U8      // bytes32
 
 	// Sync committee data (private inputs)
-	SyncCommitteePubKeys [512]sw_bls12381.G1Affine // 512 sync committee public keys
-	SyncCommitteeBits    [512]frontend.Variable    // Bit array indicating which validators signed (0 or 1)
-	AggregatedSig        sw_bls12381.G2Affine      // Aggregated signature
+	ScPubKeys     [512]sw_bls12381.G1Affine // 512 sync committee public keys
+	ScBits        [512]frontend.Variable    // Bit array indicating which validators signed (0 or 1)
+	AggregatedSig sw_bls12381.G2Affine      // Aggregated signature
 
 	// Next sync committee Merkle proof data
-	NextSyncCommitteeBranch [6][32]uints.U8 // Merkle branch proving inclusion in StateRoot
+	NextScBranch [6][32]uints.U8 // Merkle branch proving inclusion in StateRoot
 
 	// Public inputs - verified by the circuit
-	SyncCommitteeHash     [32]uints.U8 `gnark:",public"` // SHA2 hash commitment to sync committee pubkeys
-	NextSyncCommitteeRoot [32]uints.U8 `gnark:",public"` // SSZ root of next_sync_committee
+	HashIdxs      [1]uints.U8  `gnark:",public"`
+	ScPubKeysHash [32]uints.U8 `gnark:",public"` // SHA2 hash commitment to sync committee pubkeys
+	NextScRoot    [32]uints.U8 `gnark:",public"` // SSZ root of next_sync_committee
 }
 
 // Define implements the circuit constraints
 func (c *ScUpdateVerifierCircuit) Define(api frontend.API) error {
 	// Step 1: Verify sync committee pubkeys commitment using SHA2 hash
-	err := c.verifySyncCommitteePubKeysCommitment(api)
+	err := c.verifyScPubKeysCommitment(api)
 	if err != nil {
 		return fmt.Errorf("sync committee pubkeys commitment verification failed: %w", err)
 	}
@@ -392,10 +393,36 @@ func (c *ScUpdateVerifierCircuit) bytesToBLS12381FpMod(
 	return res, nil
 }
 
-// verifySyncCommitteePubKeysCommitment verifies that the commitment to sync committee pubkeys matches
-// Uses SHA2 hash for compatibility
-// Only hashes the first two limbs (Limbs[0], Limbs[1]) of each X coordinate for efficiency
-func (c *ScUpdateVerifierCircuit) verifySyncCommitteePubKeysCommitment(api frontend.API) error {
+//// verifyScPubKeysCommitment verifies that the commitment to sync committee pubkeys matches
+//// Uses SHA2 hash for compatibility
+//// Only hashes the first two limbs (Limbs[0], Limbs[1]) of each X coordinate for efficiency
+//func (c *ScUpdateVerifierCircuit) verifyScPubKeysCommitment(api frontend.API) error {
+//	// Create SHA2 hasher
+//	hasher, err := sha2.New(api)
+//	if err != nil {
+//		return fmt.Errorf("failed to create SHA2 hasher: %w", err)
+//	}
+//
+//	// BLS public key is 48 bytes long, so we hash the last two limbs of x coordinate.
+//	// Limbs[0] is the least significant limb of x coordinate.
+//	for i := 0; i < 512; i++ {
+//		xbytes := c.serializeLimbTo8Bytes(api, c.ScPubKeys[i].X.Limbs[1])
+//		hasher.Write(xbytes)
+//		xbytes = c.serializeLimbTo8Bytes(api, c.ScPubKeys[i].X.Limbs[0])
+//		hasher.Write(xbytes)
+//	}
+//
+//	// Compute hash
+//	hashResult := hasher.Sum() // Returns []uints.U8 of length 32
+//
+//	for i := 0; i < 32; i++ {
+//		api.AssertIsEqual(hashResult[i].Val, c.ScPubKeysHash[i].Val)
+//	}
+//
+//	return nil
+//}
+
+func (c *ScUpdateVerifierCircuit) verifyScPubKeysCommitment(api frontend.API) error {
 	// Create SHA2 hasher
 	hasher, err := sha2.New(api)
 	if err != nil {
@@ -405,9 +432,9 @@ func (c *ScUpdateVerifierCircuit) verifySyncCommitteePubKeysCommitment(api front
 	// BLS public key is 48 bytes long, so we hash the last two limbs of x coordinate.
 	// Limbs[0] is the least significant limb of x coordinate.
 	for i := 0; i < 512; i++ {
-		//xbytes := c.serializeLimbTo8Bytes(api, c.SyncCommitteePubKeys[i].X.Limbs[1])
-		//hasher.Write(xbytes)
-		xbytes := c.serializeLimbTo8Bytes(api, c.SyncCommitteePubKeys[i].X.Limbs[0])
+		xbytes := c.serializeLimbTo8Bytes(api, c.ScPubKeys[i].X.Limbs[1])
+		hasher.Write(xbytes)
+		xbytes = c.serializeLimbTo8Bytes(api, c.ScPubKeys[i].X.Limbs[0])
 		hasher.Write(xbytes)
 	}
 
@@ -415,7 +442,7 @@ func (c *ScUpdateVerifierCircuit) verifySyncCommitteePubKeysCommitment(api front
 	hashResult := hasher.Sum() // Returns []uints.U8 of length 32
 
 	for i := 0; i < 32; i++ {
-		api.AssertIsEqual(hashResult[i].Val, c.SyncCommitteeHash[i].Val)
+		api.AssertIsEqual(hashResult[i].Val, c.ScPubKeysHash[i].Val)
 	}
 
 	return nil
@@ -431,12 +458,12 @@ func (c *ScUpdateVerifierCircuit) aggregatePubKeys(api frontend.API) (*sw_bls123
 	}
 
 	// Find the first validator that participated to initialize the accumulator
-	accumulator := &c.SyncCommitteePubKeys[0]
-	hasInitialized := c.SyncCommitteeBits[0]
+	accumulator := &c.ScPubKeys[0]
+	hasInitialized := c.ScBits[0]
 
 	// Process remaining validators
 	for i := 1; i < 512; i++ {
-		bit := c.SyncCommitteeBits[i]
+		bit := c.ScBits[i]
 
 		// If we haven't initialized yet and this bit is set, use this as initial value
 		isFirstSelected := api.And(api.IsZero(hasInitialized), bit)
@@ -445,13 +472,13 @@ func (c *ScUpdateVerifierCircuit) aggregatePubKeys(api frontend.API) (*sw_bls123
 		shouldAdd := api.And(hasInitialized, bit)
 
 		// Compute sum = accumulator + pubkey[i]
-		sum := curve.Add(accumulator, &c.SyncCommitteePubKeys[i])
+		sum := curve.Add(accumulator, &c.ScPubKeys[i])
 
 		// If shouldAdd, use sum; otherwise keep accumulator
 		tempResult := curve.Select(shouldAdd, sum, accumulator)
 
 		// If this is the first selected key, replace with pubkey[i]; otherwise use tempResult
-		accumulator = curve.Select(isFirstSelected, &c.SyncCommitteePubKeys[i], tempResult)
+		accumulator = curve.Select(isFirstSelected, &c.ScPubKeys[i], tempResult)
 
 		// Update hasInitialized flag
 		hasInitialized = api.Or(hasInitialized, bit)
@@ -509,7 +536,7 @@ func (c *ScUpdateVerifierCircuit) verifyBLSSignature(api frontend.API, aggregate
 // Position 23 in binary: 0b10111
 //
 // For a Merkle branch of length 6, we verify by:
-// 1. Starting with leaf = NextSyncCommitteeRoot
+// 1. Starting with leaf = NextScRoot
 // 2. For each branch node, compute parent = hash(left, right) where left/right depends on the path
 // 3. Final result should equal StateRoot
 func (c *ScUpdateVerifierCircuit) verifyNextSyncCommitteeMerkleProof(api frontend.API) error {
@@ -525,11 +552,11 @@ func (c *ScUpdateVerifierCircuit) verifyNextSyncCommitteeMerkleProof(api fronten
 	path := [6]int{1, 1, 1, 0, 1, 0}
 
 	// Start with the leaf (next_sync_committee root)
-	current := c.NextSyncCommitteeRoot
+	current := c.NextScRoot
 
 	// Traverse up the tree using the branch
 	for i := 0; i < 6; i++ {
-		sibling := c.NextSyncCommitteeBranch[i]
+		sibling := c.NextScBranch[i]
 
 		// Compute parent hash based on path direction
 		if path[i] == 1 {

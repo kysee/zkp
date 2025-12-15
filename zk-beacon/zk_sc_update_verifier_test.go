@@ -39,98 +39,6 @@ var (
 	gnarkLogger = zerolog.New(os.Stdout).Level(zerolog.DebugLevel).With().Timestamp().Logger()
 )
 
-// Compile the circuit and performs setup once for all tests
-func onceSetupCircuit() {
-	if blsVerifierCCS != nil {
-		fmt.Println("Circuit already compiled and setup")
-		return
-	}
-	//
-	// Compile circuit
-	var err error
-
-	ccsPath := "./.build/ScUpdateVerifierCircuit.ccs"
-	pkPath := "./.build/ScUpdateVerifierCircuit.pk"
-	vkPath := "./.build/ScUpdateVerifierCircuit.vk"
-
-	// Step 1: Circuit compile
-	fCcs, err := os.Open(ccsPath)
-	defer fCcs.Close()
-
-	if err != nil {
-		fmt.Println("Compiling ScUpdateVerifierCircuit circuit...")
-		// Compile with BN254 scalar field (for emulated BLS12-381)
-		blsVerifierCCS, err = frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit.ScUpdateVerifierCircuit{})
-		if err != nil {
-			panic(err)
-		}
-		fCcs, _ = os.Create(ccsPath)
-		_, _ = blsVerifierCCS.WriteTo(fCcs)
-	} else {
-		fmt.Println("Loading ScUpdateVerifierCircuit circuit...")
-
-		blsVerifierCCS = groth16.NewCS(ecc.BN254)
-		_, err = blsVerifierCCS.ReadFrom(fCcs)
-		if err != nil {
-			panic(err)
-		}
-	}
-	fmt.Printf("✓ Circuit has %d constraints, %d public inputs\n", blsVerifierCCS.GetNbConstraints(), blsVerifierCCS.GetNbPublicVariables())
-
-	// Step 2: Setup (generate proving and verifying keys)
-	fpk, err0 := os.Open(pkPath)
-	defer fpk.Close()
-	fvk, err1 := os.Open(vkPath)
-	defer fvk.Close()
-
-	if err0 != nil || err1 != nil {
-		fmt.Println("Generating proving and verifying keys...")
-		blsVerifierPK, blsVerifierVK, err = groth16.Setup(blsVerifierCCS)
-		if err != nil {
-			panic(err)
-		}
-		fpk, _ = os.Create(pkPath)
-		_, _ = blsVerifierPK.WriteTo(fpk)
-
-		fvk, _ = os.Create(vkPath)
-		_, _ = blsVerifierVK.WriteTo(fvk)
-	} else {
-		fmt.Println("Loading proving and verifying keys...")
-		blsVerifierPK = groth16.NewProvingKey(ecc.BN254)
-		blsVerifierVK = groth16.NewVerifyingKey(ecc.BN254)
-		if _, err := blsVerifierPK.ReadFrom(fpk); err != nil {
-			panic(err)
-		}
-		if _, err := blsVerifierVK.ReadFrom(fvk); err != nil {
-			panic(err)
-		}
-	}
-	fmt.Println("✓ Setup complete")
-}
-
-// assignNextSyncCommitteeToWitness computes next_sync_committee root and assigns it along with
-// next_sync_committee_branch to the witness
-func assignNextSyncCommitteeToWitness(
-	update *types.LightClientUpdate,
-	witness *circuit.ScUpdateVerifierCircuit,
-) {
-	// Compute next_sync_committee root
-	nextSCRoot := update.Data.NextSyncCommittee.HashTreeRoot(configs.Mainnet, tree.GetHashFn())
-	fmt.Printf("next_sync_committee root: %v\n", nextSCRoot.String())
-
-	// Assign next_sync_committee root (public input)
-	for i := 0; i < 32; i++ {
-		witness.NextSyncCommitteeRoot[i] = uints.NewU8(nextSCRoot[i])
-	}
-
-	// Assign next_sync_committee_branch (private input)
-	for i := 0; i < 6; i++ {
-		for j := 0; j < 32; j++ {
-			witness.NextSyncCommitteeBranch[i][j] = uints.NewU8(update.Data.NextSyncCommitteeBranch[i][j])
-		}
-	}
-}
-
 func TestScUpdateVerifierCircuit_IsSolved(t *testing.T) {
 	// Load sync committee
 	syncCommitteeFile, err := os.ReadFile("data/curr-sc.json")
@@ -186,21 +94,21 @@ func TestScUpdateVerifierCircuit_IsSolved(t *testing.T) {
 
 	// Assign sync committee public keys (PRIVATE INPUT)
 	for i := 0; i < 512; i++ {
-		witness.SyncCommitteePubKeys[i] = sw_bls12381.NewG1Affine(pubkeys[i])
+		witness.ScPubKeys[i] = sw_bls12381.NewG1Affine(pubkeys[i])
 	}
 
 	// Compute commitment to sync committee public keys (PUBLIC INPUT)
 	commitment := types.ComputeSyncCommitteeHash(pubkeys[:])
 	for i := 0; i < 32; i++ {
-		witness.SyncCommitteeHash[i] = uints.NewU8(commitment[i])
+		witness.ScPubKeysHash[i] = uints.NewU8(commitment[i])
 	}
 
 	// Assign sync committee bits (PUBLIC INPUT)
 	for i := 0; i < 512; i++ {
 		if bits[i] {
-			witness.SyncCommitteeBits[i] = 1
+			witness.ScBits[i] = 1
 		} else {
-			witness.SyncCommitteeBits[i] = 0
+			witness.ScBits[i] = 0
 		}
 	}
 
@@ -275,21 +183,21 @@ func TestScUpdateVerifierCircuit(t *testing.T) {
 
 	// Assign sync committee public keys (PRIVATE INPUT)
 	for i := 0; i < 512; i++ {
-		witness.SyncCommitteePubKeys[i] = sw_bls12381.NewG1Affine(pubkeys[i])
+		witness.ScPubKeys[i] = sw_bls12381.NewG1Affine(pubkeys[i])
 	}
 
 	// Compute commitment to sync committee public keys (PUBLIC INPUT)
 	commitment := types.ComputeSyncCommitteeHash(pubkeys[:])
 	for i := 0; i < 32; i++ {
-		witness.SyncCommitteeHash[i] = uints.NewU8(commitment[i])
+		witness.ScPubKeysHash[i] = uints.NewU8(commitment[i])
 	}
 
 	// Assign sync committee bits (PUBLIC INPUT)
 	for i := 0; i < 512; i++ {
 		if bits[i] {
-			witness.SyncCommitteeBits[i] = 1
+			witness.ScBits[i] = 1
 		} else {
-			witness.SyncCommitteeBits[i] = 0
+			witness.ScBits[i] = 0
 		}
 	}
 
@@ -300,30 +208,34 @@ func TestScUpdateVerifierCircuit(t *testing.T) {
 	assignNextSyncCommitteeToWitness(&update, witness)
 
 	// Test proof generation and verification
-	t.Run("Generate and Verify Proof", func(t *testing.T) {
-		// Create full witness
-		fullWitness, err := frontend.NewWitness(witness, ecc.BN254.ScalarField())
-		require.NoError(t, err, "Failed to create witness")
+	// Create full witness
+	fullWitness, err := frontend.NewWitness(witness, ecc.BN254.ScalarField())
+	require.NoError(t, err, "Failed to create witness")
 
-		// Create proof using pre-compiled circuit and keys
-		proof, err := groth16.Prove(blsVerifierCCS, blsVerifierPK, fullWitness,
-			backend.WithSolverOptions(
-				solver.WithLogger(gnarkLogger),
-			))
-		require.NoError(t, err, "Proof generation failed")
+	// Create proof using pre-compiled circuit and keys
+	proof, err := groth16.Prove(blsVerifierCCS, blsVerifierPK, fullWitness,
+		backend.WithSolverOptions(
+			solver.WithLogger(gnarkLogger),
+		))
+	require.NoError(t, err, "Proof generation failed")
 
-		t.Logf("Proof generated successfully")
+	_proof, ok := proof.(interface{ MarshalSolidity() []byte })
+	require.True(t, ok, "proof does not implement MarshalSolidity()")
 
-		// Extract public inputs for verification
-		publicWitness, err := frontend.NewWitness(witness, ecc.BN254.ScalarField(), frontend.PublicOnly())
-		require.NoError(t, err, "Failed to create public witness")
+	proofSolidity := _proof.MarshalSolidity()
+	fmt.Printf("Proof (solidity, %d bytes): 0x%x\n", len(proofSolidity), proofSolidity)
 
-		// Verify proof using pre-compiled verifying key
-		err = groth16.Verify(proof, blsVerifierVK, publicWitness)
-		require.NoError(t, err, "Proof verification failed")
+	t.Logf("Proof generated successfully")
 
-		t.Logf("✓ Proof verification SUCCEEDED!")
-	})
+	// Extract public inputs for verification
+	publicWitness, err := frontend.NewWitness(witness, ecc.BN254.ScalarField(), frontend.PublicOnly())
+	require.NoError(t, err, "Failed to create public witness")
+
+	// Verify proof using pre-compiled verifying key
+	err = groth16.Verify(proof, blsVerifierVK, publicWitness)
+	require.NoError(t, err, "Proof verification failed")
+
+	t.Logf("✓ Proof verification SUCCEEDED!")
 }
 
 func TestScUpdateVerifierCircuitInvalidSignature(t *testing.T) {
@@ -377,21 +289,21 @@ func TestScUpdateVerifierCircuitInvalidSignature(t *testing.T) {
 
 	// Assign sync committee public keys (PRIVATE INPUT)
 	for i := 0; i < 512; i++ {
-		witness.SyncCommitteePubKeys[i] = sw_bls12381.NewG1Affine(pubkeys[i])
+		witness.ScPubKeys[i] = sw_bls12381.NewG1Affine(pubkeys[i])
 	}
 
 	// Compute commitment to sync committee public keys (PUBLIC INPUT)
 	commitment := types.ComputeSyncCommitteeHash(pubkeys[:])
 	for i := 0; i < 32; i++ {
-		witness.SyncCommitteeHash[i] = uints.NewU8(commitment[i])
+		witness.ScPubKeysHash[i] = uints.NewU8(commitment[i])
 	}
 
 	// Assign sync committee bits (PUBLIC INPUT)
 	for i := 0; i < 512; i++ {
 		if bits[i] {
-			witness.SyncCommitteeBits[i] = 1
+			witness.ScBits[i] = 1
 		} else {
-			witness.SyncCommitteeBits[i] = 0
+			witness.ScBits[i] = 0
 		}
 	}
 
@@ -480,21 +392,21 @@ func TestScUpdateVerifierCircuitInvalidBlockRoot(t *testing.T) {
 
 	// Assign sync committee public keys (PRIVATE INPUT)
 	for i := 0; i < 512; i++ {
-		witness.SyncCommitteePubKeys[i] = sw_bls12381.NewG1Affine(pubkeys[i])
+		witness.ScPubKeys[i] = sw_bls12381.NewG1Affine(pubkeys[i])
 	}
 
 	// Compute commitment to sync committee public keys (PUBLIC INPUT)
 	commitment := types.ComputeSyncCommitteeHash(pubkeys[:])
 	for i := 0; i < 32; i++ {
-		witness.SyncCommitteeHash[i] = uints.NewU8(commitment[i])
+		witness.ScPubKeysHash[i] = uints.NewU8(commitment[i])
 	}
 
 	// Assign sync committee bits (PUBLIC INPUT)
 	for i := 0; i < 512; i++ {
 		if bits[i] {
-			witness.SyncCommitteeBits[i] = 1
+			witness.ScBits[i] = 1
 		} else {
-			witness.SyncCommitteeBits[i] = 0
+			witness.ScBits[i] = 0
 		}
 	}
 
@@ -555,21 +467,21 @@ func BenchmarkScUpdateVerifierCircuit(b *testing.B) {
 
 	// Assign sync committee public keys (PRIVATE INPUT)
 	for i := 0; i < 512; i++ {
-		witness.SyncCommitteePubKeys[i] = sw_bls12381.NewG1Affine(pubkeys[i])
+		witness.ScPubKeys[i] = sw_bls12381.NewG1Affine(pubkeys[i])
 	}
 
 	// Compute commitment to sync committee public keys (PUBLIC INPUT)
 	commitment := types.ComputeSyncCommitteeHash(pubkeys[:])
 	for i := 0; i < 32; i++ {
-		witness.SyncCommitteeHash[i] = uints.NewU8(commitment[i])
+		witness.ScPubKeysHash[i] = uints.NewU8(commitment[i])
 	}
 
 	// Assign sync committee bits (PUBLIC INPUT)
 	for i := 0; i < 512; i++ {
 		if bits[i] {
-			witness.SyncCommitteeBits[i] = 1
+			witness.ScBits[i] = 1
 		} else {
-			witness.SyncCommitteeBits[i] = 0
+			witness.ScBits[i] = 0
 		}
 	}
 
@@ -604,4 +516,96 @@ func BenchmarkScUpdateVerifierCircuit(b *testing.B) {
 			}
 		}
 	})
+}
+
+// Compile the circuit and performs setup once for all tests
+func onceSetupCircuit() {
+	if blsVerifierCCS != nil {
+		fmt.Println("Circuit already compiled and setup")
+		return
+	}
+	//
+	// Compile circuit
+	var err error
+
+	ccsPath := "./.build/ScUpdateVerifierCircuit.ccs"
+	pkPath := "./.build/ScUpdateVerifierCircuit.pk"
+	vkPath := "./.build/ScUpdateVerifierCircuit.vk"
+
+	// Step 1: Circuit compile
+	fCcs, err := os.Open(ccsPath)
+	defer fCcs.Close()
+
+	if err != nil {
+		fmt.Println("Compiling ScUpdateVerifierCircuit circuit...")
+		// Compile with BN254 scalar field (for emulated BLS12-381)
+		blsVerifierCCS, err = frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit.ScUpdateVerifierCircuit{})
+		if err != nil {
+			panic(err)
+		}
+		fCcs, _ = os.Create(ccsPath)
+		_, _ = blsVerifierCCS.WriteTo(fCcs)
+	} else {
+		fmt.Println("Loading ScUpdateVerifierCircuit circuit...")
+
+		blsVerifierCCS = groth16.NewCS(ecc.BN254)
+		_, err = blsVerifierCCS.ReadFrom(fCcs)
+		if err != nil {
+			panic(err)
+		}
+	}
+	fmt.Printf("✓ Circuit has %d constraints, %d public inputs\n", blsVerifierCCS.GetNbConstraints(), blsVerifierCCS.GetNbPublicVariables())
+
+	// Step 2: Setup (generate proving and verifying keys)
+	fpk, err0 := os.Open(pkPath)
+	defer fpk.Close()
+	fvk, err1 := os.Open(vkPath)
+	defer fvk.Close()
+
+	if err0 != nil || err1 != nil {
+		fmt.Println("Generating proving and verifying keys...")
+		blsVerifierPK, blsVerifierVK, err = groth16.Setup(blsVerifierCCS)
+		if err != nil {
+			panic(err)
+		}
+		fpk, _ = os.Create(pkPath)
+		_, _ = blsVerifierPK.WriteTo(fpk)
+
+		fvk, _ = os.Create(vkPath)
+		_, _ = blsVerifierVK.WriteTo(fvk)
+	} else {
+		fmt.Println("Loading proving and verifying keys...")
+		blsVerifierPK = groth16.NewProvingKey(ecc.BN254)
+		blsVerifierVK = groth16.NewVerifyingKey(ecc.BN254)
+		if _, err := blsVerifierPK.ReadFrom(fpk); err != nil {
+			panic(err)
+		}
+		if _, err := blsVerifierVK.ReadFrom(fvk); err != nil {
+			panic(err)
+		}
+	}
+	fmt.Println("✓ Setup complete")
+}
+
+// assignNextSyncCommitteeToWitness computes next_sync_committee root and assigns it along with
+// next_sync_committee_branch to the witness
+func assignNextSyncCommitteeToWitness(
+	update *types.LightClientUpdate,
+	witness *circuit.ScUpdateVerifierCircuit,
+) {
+	// Compute next_sync_committee root
+	nextSCRoot := update.Data.NextSyncCommittee.HashTreeRoot(configs.Mainnet, tree.GetHashFn())
+	fmt.Printf("next_sync_committee root: %v\n", nextSCRoot.String())
+
+	// Assign next_sync_committee root (public input)
+	for i := 0; i < 32; i++ {
+		witness.NextScRoot[i] = uints.NewU8(nextSCRoot[i])
+	}
+
+	// Assign next_sync_committee_branch (private input)
+	for i := 0; i < 6; i++ {
+		for j := 0; j < 32; j++ {
+			witness.NextScBranch[i][j] = uints.NewU8(update.Data.NextSyncCommitteeBranch[i][j])
+		}
+	}
 }
