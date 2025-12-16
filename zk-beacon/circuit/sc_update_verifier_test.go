@@ -1,10 +1,11 @@
-package zk_beacon
+package circuit
 
 import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/consensys/gnark-crypto/ecc"
@@ -18,13 +19,14 @@ import (
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bls12381"
 	"github.com/consensys/gnark/std/math/uints"
 	gnark_test "github.com/consensys/gnark/test"
-	"github.com/kysee/zkp/zk-beacon/circuit"
 	"github.com/kysee/zkp/zk-beacon/types"
 	"github.com/protolambda/zrnt/eth2/configs"
 	"github.com/protolambda/ztyp/tree"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
+
+const rootDir = ".."
 
 // Global variables for circuit compilation and setup (initialized once in init())
 var (
@@ -42,7 +44,7 @@ var (
 
 func TestScUpdateVerifierCircuit_IsSolved(t *testing.T) {
 	// Load sync committee
-	update1104File, err := os.ReadFile("data/sc-update-1104.json")
+	update1104File, err := os.ReadFile(filepath.Join(rootDir, "data/sc-update-1104.json"))
 	require.NoError(t, err, "Failed to read file")
 	var update1104 types.LightClientUpdate
 	err = json.Unmarshal(update1104File, &update1104)
@@ -56,7 +58,7 @@ func TestScUpdateVerifierCircuit_IsSolved(t *testing.T) {
 		period, period+1)
 
 	// Load light client update
-	updateFile, err := os.ReadFile("data/sc-update-1105.json")
+	updateFile, err := os.ReadFile(filepath.Join(rootDir, "data/sc-update-1105.json"))
 	require.NoError(t, err, "Failed to read light client update file")
 
 	var update types.LightClientUpdate
@@ -84,7 +86,7 @@ func TestScUpdateVerifierCircuit_IsSolved(t *testing.T) {
 	}
 
 	// Create witness
-	witness := &circuit.ScUpdateVerifierCircuit{}
+	witness := &ScUpdateVerifierCircuit{}
 
 	// Assign BeaconBlockHeader fields
 	witness.Slot = uint64(update.Data.AttestedHeader.Beacon.Slot)
@@ -125,7 +127,7 @@ func TestScUpdateVerifierCircuit_IsSolved(t *testing.T) {
 
 	// Test the circuit using gnark test framework
 	assert := gnark_test.NewAssert(t)
-	err = gnark_test.IsSolved(&circuit.ScUpdateVerifierCircuit{}, witness, ecc.BN254.ScalarField())
+	err = gnark_test.IsSolved(&ScUpdateVerifierCircuit{}, witness, ecc.BN254.ScalarField())
 	assert.NoError(err, "Circuit constraints should be satisfied")
 	t.Logf("✓ Proof solving SUCCEEDED!")
 
@@ -136,7 +138,7 @@ func TestScUpdateVerifierCircuit(t *testing.T) {
 	onceSetupCircuit()
 
 	// Load sync committee
-	update1104File, err := os.ReadFile("data/sc-update-1104.json")
+	update1104File, err := os.ReadFile(filepath.Join(rootDir, "data/sc-update-1104.json"))
 	require.NoError(t, err, "Failed to read file")
 	var update1104 types.LightClientUpdate
 	err = json.Unmarshal(update1104File, &update1104)
@@ -150,7 +152,7 @@ func TestScUpdateVerifierCircuit(t *testing.T) {
 		period, period+1)
 
 	// Load light client update
-	updateFile, err := os.ReadFile("data/sc-update-1105.json")
+	updateFile, err := os.ReadFile(filepath.Join(rootDir, "data/sc-update-1105.json"))
 	require.NoError(t, err, "Failed to read light client update file")
 
 	var update types.LightClientUpdate
@@ -178,7 +180,7 @@ func TestScUpdateVerifierCircuit(t *testing.T) {
 	}
 
 	// Create witness
-	witness := &circuit.ScUpdateVerifierCircuit{}
+	witness := &ScUpdateVerifierCircuit{}
 
 	// Assign BeaconBlockHeader fields
 	witness.Slot = uint64(update.Data.AttestedHeader.Beacon.Slot)
@@ -236,7 +238,7 @@ func TestScUpdateVerifierCircuit(t *testing.T) {
 	proofData := types.CreateProofData(proofSolidity)
 	jsonBlob, _ := json.MarshalIndent(proofData, "", "  ")
 
-	err = os.WriteFile("data/proof-data.json", jsonBlob, 0644)
+	err = os.WriteFile(filepath.Join(rootDir, "data/proof-data.json"), jsonBlob, 0644)
 	require.NoError(t, err, "Failed to write proof-data.json")
 
 	fmt.Printf("Proof (solidity, %d bytes): 0x%x\n", len(proofSolidity), proofSolidity)
@@ -258,7 +260,7 @@ func TestScUpdateVerifierCircuitInvalidSignature(t *testing.T) {
 	onceSetupCircuit()
 
 	// Load sync committee
-	update1104File, err := os.ReadFile("data/sc-update-1104.json")
+	update1104File, err := os.ReadFile(filepath.Join(rootDir, "data/sc-update-1104.json"))
 	require.NoError(t, err, "Failed to read file")
 	var update1104 types.LightClientUpdate
 	err = json.Unmarshal(update1104File, &update1104)
@@ -272,7 +274,7 @@ func TestScUpdateVerifierCircuitInvalidSignature(t *testing.T) {
 		period, period+1)
 
 	// Load light client update
-	updateFile, err := os.ReadFile("data/sc-update-1105.json")
+	updateFile, err := os.ReadFile(filepath.Join(rootDir, "data/sc-update-1105.json"))
 	require.NoError(t, err, "Failed to read light client update file")
 
 	var update types.LightClientUpdate
@@ -299,7 +301,7 @@ func TestScUpdateVerifierCircuitInvalidSignature(t *testing.T) {
 	require.NoError(t, err, "Failed to set random Y")
 
 	// Create witness with invalid signature
-	witness := &circuit.ScUpdateVerifierCircuit{}
+	witness := &ScUpdateVerifierCircuit{}
 
 	witness.Slot = uint64(update.Data.AttestedHeader.Beacon.Slot)
 	witness.ProposerIndex = uint64(update.Data.AttestedHeader.Beacon.ProposerIndex)
@@ -363,7 +365,7 @@ func TestScUpdateVerifierCircuitInvalidBlockRoot(t *testing.T) {
 	onceSetupCircuit()
 
 	// Load sync committee
-	update1104File, err := os.ReadFile("data/sc-update-1104.json")
+	update1104File, err := os.ReadFile(filepath.Join(rootDir, "data/sc-update-1104.json"))
 	require.NoError(t, err, "Failed to read file")
 	var update1104 types.LightClientUpdate
 	err = json.Unmarshal(update1104File, &update1104)
@@ -377,7 +379,7 @@ func TestScUpdateVerifierCircuitInvalidBlockRoot(t *testing.T) {
 		period, period+1)
 
 	// Load light client update
-	updateFile, err := os.ReadFile("data/sc-update-1105.json")
+	updateFile, err := os.ReadFile(filepath.Join(rootDir, "data/sc-update-1105.json"))
 	require.NoError(t, err, "Failed to read light client update file")
 
 	var update types.LightClientUpdate
@@ -409,7 +411,7 @@ func TestScUpdateVerifierCircuitInvalidBlockRoot(t *testing.T) {
 	}
 
 	// Create witness with invalid block root
-	witness := &circuit.ScUpdateVerifierCircuit{}
+	witness := &ScUpdateVerifierCircuit{}
 
 	witness.Slot = uint64(update.Data.AttestedHeader.Beacon.Slot)
 	witness.ProposerIndex = uint64(update.Data.AttestedHeader.Beacon.ProposerIndex)
@@ -461,7 +463,7 @@ func BenchmarkScUpdateVerifierCircuit(b *testing.B) {
 	onceSetupCircuit()
 
 	// Load test data
-	update1104File, err := os.ReadFile("data/sc-update-1104.json")
+	update1104File, err := os.ReadFile(filepath.Join(rootDir, "data/sc-update-1104.json"))
 	require.NoError(b, err, "Failed to read file")
 	var update1104 types.LightClientUpdate
 	err = json.Unmarshal(update1104File, &update1104)
@@ -469,7 +471,7 @@ func BenchmarkScUpdateVerifierCircuit(b *testing.B) {
 	// At slot 1105, current sync committee
 	syncCommittee := update1104.Data.NextSyncCommittee
 
-	updateFile, _ := os.ReadFile("data/sc-update-1105.json")
+	updateFile, _ := os.ReadFile(filepath.Join(rootDir, "data/sc-update-1105.json"))
 	var update types.LightClientUpdate
 	json.Unmarshal(updateFile, &update)
 
@@ -486,7 +488,7 @@ func BenchmarkScUpdateVerifierCircuit(b *testing.B) {
 	var signature bls12381.G2Affine
 	_, _ = signature.SetBytes(sigBytes)
 
-	witness := &circuit.ScUpdateVerifierCircuit{}
+	witness := &ScUpdateVerifierCircuit{}
 	witness.Slot = uint64(update.Data.AttestedHeader.Beacon.Slot)
 	witness.ProposerIndex = uint64(update.Data.AttestedHeader.Beacon.ProposerIndex)
 	for i := 0; i < 32; i++ {
@@ -559,9 +561,9 @@ func onceSetupCircuit() {
 	// Compile circuit
 	var err error
 
-	ccsPath := "./.build/ScUpdateVerifierCircuit.ccs"
-	pkPath := "./.build/ScUpdateVerifierCircuit.pk"
-	vkPath := "./.build/ScUpdateVerifierCircuit.vk"
+	ccsPath := filepath.Join(rootDir, ".build/ScUpdateVerifierCircuit.ccs")
+	pkPath := filepath.Join(rootDir, "build/ScUpdateVerifierCircuit.pk")
+	vkPath := filepath.Join(rootDir, ".build/ScUpdateVerifierCircuit.vk")
 
 	// Step 1: Circuit compile
 	fCcs, err := os.Open(ccsPath)
@@ -570,7 +572,7 @@ func onceSetupCircuit() {
 	if err != nil {
 		fmt.Println("Compiling ScUpdateVerifierCircuit circuit...")
 		// Compile with BN254 scalar field (for emulated BLS12-381)
-		blsVerifierCCS, err = frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit.ScUpdateVerifierCircuit{})
+		blsVerifierCCS, err = frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &ScUpdateVerifierCircuit{})
 		if err != nil {
 			panic(err)
 		}
@@ -622,7 +624,7 @@ func onceSetupCircuit() {
 // next_sync_committee_branch to the witness
 func assignNextSyncCommitteeToWitness(
 	update *types.LightClientUpdate,
-	witness *circuit.ScUpdateVerifierCircuit,
+	witness *ScUpdateVerifierCircuit,
 ) {
 	// Compute next_sync_committee root
 	nextSCRoot := update.Data.NextSyncCommittee.HashTreeRoot(configs.Mainnet, tree.GetHashFn())

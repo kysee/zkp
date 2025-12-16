@@ -1,18 +1,20 @@
-package zk_beacon
+package types
 
 import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	bls12381 "github.com/consensys/gnark-crypto/ecc/bls12-381"
-	"github.com/kysee/zkp/zk-beacon/types"
 	zrntcommon "github.com/protolambda/zrnt/eth2/beacon/common"
 	"github.com/protolambda/ztyp/tree"
 	"github.com/stretchr/testify/require"
 )
+
+const rootDir = "../"
 
 // Updated to use gnark-crypto instead of herumi/bls
 // This is Ethereum-compatible and pure Go (no CGO warnings)
@@ -44,11 +46,11 @@ func computeSigningRoot(header *zrntcommon.BeaconBlockHeader) ([]byte, error) {
 	return signingRoot[:], nil
 }
 
-func verifySyncAggregate(syncCommittee *zrntcommon.SyncCommittee, update *types.LightClientUpdate) error {
+func verifySyncAggregate(syncCommittee *zrntcommon.SyncCommittee, update *LightClientUpdate) error {
 	// Parse sync committee bits
-	bits := types.ParseSyncCommitteeBits(update.Data.SyncAggregate.SyncCommitteeBits)
+	bits := ParseSyncCommitteeBits(update.Data.SyncAggregate.SyncCommitteeBits)
 	// Aggregate public keys using gnark-crypto
-	aggPubkey, _, err := types.AggregatePublicKeys(syncCommittee.Pubkeys, bits)
+	aggPubkey, _, err := AggregatePublicKeys(syncCommittee.Pubkeys, bits)
 	if err != nil {
 		return fmt.Errorf("failed to aggregate public keys: %v", err)
 	}
@@ -100,9 +102,9 @@ func verifySyncAggregate(syncCommittee *zrntcommon.SyncCommittee, update *types.
 
 func TestVerifySyncAggregate(t *testing.T) {
 	// Load sync committee
-	update1104File, err := os.ReadFile("data/sc-update-1104.json")
+	update1104File, err := os.ReadFile(filepath.Join(rootDir, "data/sc-update-1104.json"))
 	require.NoError(t, err, "Failed to read file")
-	var update1104 types.LightClientUpdate
+	var update1104 LightClientUpdate
 	err = json.Unmarshal(update1104File, &update1104)
 	require.NoError(t, err, "Failed to parse sc-update-1104.json")
 	// At slot 1105, current sync committee
@@ -112,10 +114,10 @@ func TestVerifySyncAggregate(t *testing.T) {
 		period, period+1)
 
 	// Load light client update
-	updateFile, err := os.ReadFile("data/sc-update-1105.json")
+	updateFile, err := os.ReadFile(filepath.Join(rootDir, "data/sc-update-1105.json"))
 	require.NoError(t, err, "Failed to read light client update file")
 
-	var update types.LightClientUpdate
+	var update LightClientUpdate
 	err = json.Unmarshal(updateFile, &update)
 	require.NoError(t, err, "Failed to parse light client update JSON")
 	t.Logf("Loaded light client update (period %d, slot %s)", update.Data.AttestedHeader.Beacon.Slot/8192, update.Data.AttestedHeader.Beacon.Slot)
