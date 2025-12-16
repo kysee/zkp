@@ -30,8 +30,8 @@ contract LightClient {
         require(nextSc.length == 24624, "Invalid nextSc length"); // 513 * 48 bytes
 
         // Compute and validate period
-        uint256 newPeriod = slot / (SLOTS_PER_EPOCH * EPOCHS_PER_SYNC_COMMITTEE_PERIOD);
-        require(newPeriod == period + 1, "Period must be exactly period + 1");
+        uint256 _period = slot / (SLOTS_PER_EPOCH * EPOCHS_PER_SYNC_COMMITTEE_PERIOD);
+        require(_period == period, "Period must be same");
 
         // Compute nextSyncCommitteeRoot using SSZ (for proof verification)
         bytes32 nextScRoot = _scRoot(nextSc);
@@ -56,7 +56,7 @@ contract LightClient {
 
         // If verification succeeds, compute and store hash of nextSc's public keys
         scPubkeysHash = _pubKeysHash(nextSc);
-        period = newPeriod;
+        period = _period + 1;
     }
 
     function updateSyncCommitteeCompressed (
@@ -67,8 +67,8 @@ contract LightClient {
         bytes calldata nextScRoot
     ) external {
         // Compute and validate period
-        uint256 newPeriod = slot / (SLOTS_PER_EPOCH * EPOCHS_PER_SYNC_COMMITTEE_PERIOD);
-        require(newPeriod == period + 1, "Period must be exactly period + 1");
+        uint256 _period = slot / (SLOTS_PER_EPOCH * EPOCHS_PER_SYNC_COMMITTEE_PERIOD);
+        require(_period == period, "Period must be same");
 
         // Prepare public inputs for the verifier
         // input[0..32] = scPubkeysHash (current sync committee)
@@ -90,7 +90,7 @@ contract LightClient {
 
         // If verification succeeds, compute and store hash of nextSc's public keys
         //scPubkeysHash = _pubKeysHash(nextSc);
-        period = newPeriod;
+        period = _period + 1;
     }
 
     function _scRoot(bytes memory syncCommitteeData) internal pure returns (bytes32) {
@@ -168,20 +168,14 @@ contract LightClient {
     }
 
     function _pubKeysHash(bytes calldata pubKeys) internal pure returns (bytes32) {
-        uint256 numPubkeys = pubKeys.length / 48;
-        require(numPubkeys >= 512, "pubKeys length must be more than 512");
+        require(pubKeys.length >= 512, "pubKeys length must be more than 512");
+        uint256 numPubkeys = 512;
 
         bytes memory allLimbs = new bytes(numPubkeys * 16);
         for (uint256 i = 0; i < numPubkeys; i++) {
             uint256 offset = i * 48; // pubkey's size
             uint256 allLimbsOffset = i * 16;
-//            bytes16 combined;
             assembly {
-//                // Extract limbs[0] (bytes 40-47 of the pubkey)
-//                let limbs0 := calldataload(add(pubKeys.offset, add(offset, 40)))
-//                // Extract limbs[1] (bytes 32-39 of the pubkey)
-//                let limbs1 := calldataload(add(pubKeys.offset, add(offset, 32)))
-//                // Concat limbs[1] || limbs[0]
                 let lsb16 := calldataload(add(pubKeys.offset, add(offset, 32))) // [32..48] = 16bytes = 128bits
                 lsb16 := shl(128, shr(128, lsb16))
 
