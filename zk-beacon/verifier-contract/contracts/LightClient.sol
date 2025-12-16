@@ -5,8 +5,8 @@ import "hardhat/console.sol";
 import "./ScUpdateVerifier.sol";
 
 contract LightClient {
-    uint256 public period;
-    bytes32 public scPubkeysHash;
+    uint256 public lastPeriod;
+    mapping(uint256 => bytes32) public scPubkeysHashes;
     ScUpdateVerifier public verifier;
 
     // Beacon chain constants
@@ -14,8 +14,8 @@ contract LightClient {
     uint256 constant EPOCHS_PER_SYNC_COMMITTEE_PERIOD = 256;
 
     constructor(uint256 _initialPeriod, bytes32 _initialScPubkeysHash, address _verifierAddress) {
-        period = _initialPeriod;
-        scPubkeysHash = _initialScPubkeysHash;
+        lastPeriod = _initialPeriod;
+        scPubkeysHashes[lastPeriod] = _initialScPubkeysHash;
         verifier = ScUpdateVerifier(_verifierAddress);
     }
 
@@ -31,7 +31,7 @@ contract LightClient {
 
         // Compute and validate period
         uint256 _period = slot / (SLOTS_PER_EPOCH * EPOCHS_PER_SYNC_COMMITTEE_PERIOD);
-        require(_period == period, "Period must be same");
+        require(_period == lastPeriod, "Period must be same");
 
         // Compute nextSyncCommitteeRoot using SSZ (for proof verification)
         bytes32 nextScRoot = _scRoot(nextSc);
@@ -40,10 +40,11 @@ contract LightClient {
         // input[0..32] = scPubkeysHash (current sync committee)
         // input[33..64] = NextSyncCommitteeRoot (32 bytes)
         uint256[64] memory input;
+        bytes32 currScPubKeyHash = scPubkeysHashes[lastPeriod];
 
         // input[0] is the current sync committee commitment (syncCommitteeHash)
         for(uint256 i=0; i<32; i++) {
-            input[i] = uint256(uint8(scPubkeysHash[i]));
+            input[i] = uint256(uint8(currScPubKeyHash[i]));
         }
 
         // input[1..32] are the 32 bytes of nextScRoot
@@ -55,42 +56,8 @@ contract LightClient {
         verifier.verifyProof(proof,commitments, commitmentPok, input);
 
         // If verification succeeds, compute and store hash of nextSc's public keys
-        scPubkeysHash = _pubKeysHash(nextSc);
-        period = _period + 1;
-    }
-
-    function updateSyncCommitteeCompressed (
-        uint256[4] calldata compressedProof,
-        uint256[1] calldata compressedCommitments,
-        uint256 compressedCommitmentPok,
-        uint256 slot,
-        bytes calldata nextScRoot
-    ) external {
-        // Compute and validate period
-        uint256 _period = slot / (SLOTS_PER_EPOCH * EPOCHS_PER_SYNC_COMMITTEE_PERIOD);
-        require(_period == period, "Period must be same");
-
-        // Prepare public inputs for the verifier
-        // input[0..32] = scPubkeysHash (current sync committee)
-        // input[33..64] = NextSyncCommitteeRoot (32 bytes)
-        uint256[64] memory input;
-
-        // input[0] is the current sync committee commitment (syncCommitteeHash)
-        for(uint256 i=0; i<32; i++) {
-            input[i] = uint256(uint8(scPubkeysHash[i]));
-        }
-
-        // input[1..32] are the 32 bytes of nextScRoot
-        for (uint256 i = 0; i < 32; i++) {
-            input[i + 32] = uint256(uint8(nextScRoot[i]));
-        }
-
-        // Call the verifier with [0,0] for commitments and commitmentPok
-        verifier.verifyCompressedProof(compressedProof,compressedCommitments, compressedCommitmentPok, input);
-
-        // If verification succeeds, compute and store hash of nextSc's public keys
-        //scPubkeysHash = _pubKeysHash(nextSc);
-        period = _period + 1;
+        lastPeriod = _period + 1;
+        scPubkeysHashes[lastPeriod] = _pubKeysHash(nextSc);
     }
 
     function _scRoot(bytes memory syncCommitteeData) internal pure returns (bytes32) {

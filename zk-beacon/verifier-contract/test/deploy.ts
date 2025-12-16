@@ -12,32 +12,31 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-async function main() {
-	// Get network config from hardhat.config.ts
-	const rpcUrl = "http://127.0.0.1:8545/";
-	const privateKey = "0xdf57089febbacf7ba0bc227dafbffa9fc08a93fdc68e1e42411a14efcf23656e";
+// Create provider and wallet
 
-	// Create provider and wallet
-	const provider = new ethers.JsonRpcProvider(rpcUrl);
-	const wallet = new ethers.Wallet(privateKey, provider);
-	const managedWallet = new NonceManager(wallet);
+const rpcUrl = "http://127.0.0.1:8545/";
+const privateKey = "0xdf57089febbacf7ba0bc227dafbffa9fc08a93fdc68e1e42411a14efcf23656e";
+const provider = new ethers.JsonRpcProvider(rpcUrl);
+const wallet = new ethers.Wallet(privateKey, provider);
+const managedWallet = new NonceManager(wallet);
 
+async function deploy() {
 	console.log("Network URL:", rpcUrl);
 	console.log("Using account:", wallet.address);
 
 	// Load contract artifacts
 	const scUpdateVerifierArtifact = JSON.parse(
-	fs.readFileSync(
-	  path.join(__dirname, "../artifacts/contracts/ScUpdateVerifier.sol/ScUpdateVerifier.json"),
-	  "utf8"
-	)
+        fs.readFileSync(
+          path.join(__dirname, "../artifacts/contracts/ScUpdateVerifier.sol/ScUpdateVerifier.json"),
+          "utf8"
+        )
 	);
 
 	const lightClientArtifact = JSON.parse(
-	fs.readFileSync(
-	  path.join(__dirname, "../artifacts/contracts/LightClient.sol/LightClient.json"),
-	  "utf8"
-	)
+        fs.readFileSync(
+          path.join(__dirname, "../artifacts/contracts/LightClient.sol/LightClient.json"),
+          "utf8"
+	    )
 	);
 
 	// Deploy ScUpdateVerifier
@@ -70,71 +69,85 @@ async function main() {
 		lightClientArtifact.bytecode,
 		managedWallet
 	);
-	const lightClient: any = await LightClientFactory.deploy(
+	const lightClient0: any = await LightClientFactory.deploy(
 		initialPeriod,
 		initialScPubkeysHash,
 		scUpdateVerifierAddress
 	);
-	await lightClient.waitForDeployment();
-	const lightClientAddress = await lightClient.getAddress();
+	await lightClient0.waitForDeployment();
+	const lightClientAddress = await lightClient0.getAddress();
 	console.log("LightClient deployed to:", lightClientAddress);
 
-	// Verify deployment
-	console.log("\n=== Verifying LightClient Deployment ===");
-	const period = await lightClient.period();
-	const scPubkeysHash = await lightClient.scPubkeysHash();
-	const verifierAddress = await lightClient.verifier();
+    return [lightClientAddress, scUpdateVerifierAddress];
+}
 
-	console.log("Stored period:", period);
-	console.log("Stored scPubkeysHash:", scPubkeysHash);
-	console.log("Stored verifier address:", verifierAddress);
+async function testLightClientUpdate(lightClientAddress: string) {
+    const lightClientArtifact = JSON.parse(
+        fs.readFileSync(
+            path.join(__dirname, "../artifacts/contracts/LightClient.sol/LightClient.json"),
+            "utf8"
+        )
+    );
+    const lightClient = new ethers.Contract(lightClientAddress, lightClientArtifact.abi, managedWallet);
+    // Verify deployment
+    console.log("\n=== Verifying LightClient Deployment ===");
+    const period = await lightClient.lastPeriod();
+    const scPubkeysHash = await lightClient.scPubkeysHashes(period);
+    const verifierAddress = await lightClient.verifier();
 
-	// Test testScRoot
-	const scUpdate = loadSyncCommitteeUpdateData(`${projectRoot()}/../data/sc-update-1105.json`);
-	const slot = scUpdate.data.attested_header.beacon.slot;
-	const nextSc = scUpdate.data.next_sync_committee;
-	const szNextSc = syncCommitteeToBytes(nextSc);
-	console.log("szNextSc.pubkes (+aggreagte):", szNextSc.length / 48);
-	try {
-		const estimatedGas = await lightClient.testScRoot.estimateGas(szNextSc, {gasLimit: 30000000});
-		console.log("testScRoot - Estimated gas needed:", estimatedGas.toString());
-		console.log("In millions:", (Number(estimatedGas) / 1_000_000).toFixed(2), "M");
-	} catch (err) {
-		console.error("estimateGas failed:", err);
-		process.exit(0);
-	}
+    console.log("Stored period:", period);
+    console.log("Stored scPubkeysHash:", scPubkeysHash);
+    console.log("Stored verifier address:", verifierAddress);
 
-	const nextScRoot = await lightClient.testScRoot(szNextSc);
-	console.log("testScRoot result:", nextScRoot);
+    // Test testScRoot
+    const scUpdate = loadSyncCommitteeUpdateData(`${projectRoot()}/../data/sc-update-1105.json`);
+    const slot = scUpdate.data.attested_header.beacon.slot;
+    const nextSc = scUpdate.data.next_sync_committee;
+    const szNextSc = syncCommitteeToBytes(nextSc);
+    console.log("szNextSc.pubkes (+aggreagte):", szNextSc.length / 48);
+    try {
+        const estimatedGas = await lightClient.testScRoot.estimateGas(szNextSc, {gasLimit: 30000000});
+        console.log("testScRoot - Estimated gas needed:", estimatedGas.toString());
+        console.log("In millions:", (Number(estimatedGas) / 1_000_000).toFixed(2), "M");
+    } catch (err) {
+        console.error("estimateGas failed:", err);
+        process.exit(0);
+    }
+
+    const nextScRoot = await lightClient.testScRoot(szNextSc);
+    console.log("testScRoot result:", nextScRoot);
 
     // Test updateSyncCommittee
-	const proofData = loadProofData(`${projectRoot()}/../data/proof-data.json`)
-	try {
+    const proofData = loadProofData(`${projectRoot()}/../data/proof-data.json`)
+    try {
         const estimatedGas = await lightClient.updateSyncCommittee.estimateGas(
             proofData.proof, proofData.commitments, proofData.commitmentPok,
             slot, szNextSc,
             {gasLimit: 30000000});
-		console.log("updateSyncCommittee - Estimated gas needed:", estimatedGas.toString());
-		console.log("In millions:", (Number(estimatedGas) / 1_000_000).toFixed(2), "M");
-	} catch (err) {
-		console.error("estimateGas failed:", err);
-	    process.exit(0);
-	}
+        console.log("updateSyncCommittee - Estimated gas needed:", estimatedGas.toString());
+        console.log("In millions:", (Number(estimatedGas) / 1_000_000).toFixed(2), "M");
+    } catch (err) {
+        console.error("estimateGas failed:", err);
+        process.exit(0);
+    }
 
-	await lightClient.updateSyncCommittee(
-		proofData.proof, proofData.commitments, proofData.commitmentPok,
-		slot, szNextSc,
-		{gasLimit: 30000000});
-	const newPeriod = await lightClient.period();
-	const newScPubkeysHash = await lightClient.scPubkeysHash();
-	console.log("Stored newPeriod:", newPeriod);
-	console.log("Stored newScPubkeysHash:", newScPubkeysHash);
+    await lightClient.updateSyncCommittee(
+        proofData.proof, proofData.commitments, proofData.commitmentPok,
+        slot, szNextSc,
+        {gasLimit: 30000000});
+    const newPeriod = await lightClient.lastPeriod();
+    const newScPubkeysHash = await lightClient.scPubkeysHashes(newPeriod);
+    console.log("Stored newPeriod:", newPeriod);
+    console.log("Stored newScPubkeysHash:", newScPubkeysHash);
     console.log("\n=== Deployment Complete ===");
 }
 
-main()
-  .then(() => process.exit(0))
-  .catch((error) => {
-	console.error(error);
-	process.exit(1);
-  });
+
+deploy()
+    .then(([lightClient, scUpdateVerifier]) => {
+        testLightClientUpdate(lightClient);
+    })
+    .catch((err) => {
+        console.error(err);
+        process.exit(1);
+    });
