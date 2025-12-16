@@ -26,14 +26,12 @@ func NewAPIFetcher(baseURL string) *APIFetcher {
 }
 
 // APIResponse represents the Beacon API response structure
-type APIResponse struct {
-	Data []types.LightClientUpdate `json:"data"`
-}
+type APIResponse = []types.LightClientUpdate
 
 // FetchUpdate retrieves the light client update via Beacon API
 // GET /eth/v1/beacon/light_client/updates?start_period=&count=
-func (a *APIFetcher) FetchUpdate() (*types.LightClientUpdate, error) {
-	return a.FetchUpdateWithParams(0, 1)
+func (a *APIFetcher) FetchUpdate(period uint64) (*types.LightClientUpdate, error) {
+	return a.FetchUpdateWithParams(period, 1)
 }
 
 // FetchUpdateWithParams retrieves light client updates with specific parameters
@@ -73,12 +71,11 @@ func (a *APIFetcher) FetchUpdateWithParams(startPeriod uint64, count int) (*type
 	if err := json.Unmarshal(body, &apiResponse); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
-
 	// Check if we got any updates
-	if len(apiResponse.Data) == 0 {
+	if len(apiResponse) == 0 {
 		return nil, fmt.Errorf("no light client updates found")
 	}
 
 	// Return the first update
-	return &apiResponse.Data[0], nil
+	return &apiResponse[0], nil
 }

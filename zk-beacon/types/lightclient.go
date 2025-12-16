@@ -32,6 +32,7 @@ type LightClientUpdate struct {
 		SyncAggregate           zrntaltair.SyncAggregate `json:"sync_aggregate"`
 		SignatureSlot           string                   `json:"signature_slot"`
 	} `json:"data"`
+	Version string `json:"version"`
 }
 
 type ExecutionPayloadHeader struct {
@@ -94,10 +95,10 @@ func AggregatePublicKeys(pubkeys []zrntcommon.BLSPubkey, bits []bool) (bls12381.
 	return aggPubkey, count, nil
 }
 
-// ComputeSyncCommitteeHash computes a SHA256 commitment to the sync committee public keys
+// ComputeScPubKeysHash computes a SHA256 commitment to the sync committee public keys
 // This matches the commitment computation in the circuit
 //
-//	func ComputeSyncCommitteeHash(pubkeys []bls12381.G1Affine) [32]byte {
+//	func ComputeScPubKeysHash(pubkeys []bls12381.G1Affine) [32]byte {
 //		hasher := sha256.New()
 //
 //		// Hash each public key's X coordinate (48 bytes in compressed form)
@@ -112,7 +113,7 @@ func AggregatePublicKeys(pubkeys []zrntcommon.BLSPubkey, bits []bool) (bls12381.
 //		copy(commitment[:], hasher.Sum(nil))
 //		return commitment
 //	}
-func ComputeSyncCommitteeHash(pubkeys []bls12381.G1Affine) [32]byte {
+func ComputeScPubKeysHash(pubkeys []bls12381.G1Affine) [32]byte {
 	hasher := sha256.New()
 
 	// Hash only the first two limbs (Limbs[0], Limbs[1]) of each X coordinate for efficiency
@@ -129,7 +130,6 @@ func ComputeSyncCommitteeHash(pubkeys []bls12381.G1Affine) [32]byte {
 
 	var commitment [32]byte
 	copy(commitment[:], hasher.Sum(nil))
-	fmt.Printf("curr_sync_committee hash: 0x%x\n", commitment)
 	return commitment
 }
 

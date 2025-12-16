@@ -102,7 +102,8 @@ func TestScUpdateVerifierCircuit_IsSolved(t *testing.T) {
 	}
 
 	// Compute commitment to sync committee public keys (PUBLIC INPUT)
-	commitment := types.ComputeSyncCommitteeHash(pubkeys[:])
+	commitment := types.ComputeScPubKeysHash(pubkeys[:])
+	fmt.Printf("curr_sync_committee hash: 0x%x\n", commitment)
 	for i := 0; i < 32; i++ {
 		witness.ScPubKeysHash[i] = uints.NewU8(commitment[i])
 	}
@@ -194,7 +195,8 @@ func TestScUpdateVerifierCircuit(t *testing.T) {
 	}
 
 	// Compute commitment to sync committee public keys (PUBLIC INPUT)
-	commitment := types.ComputeSyncCommitteeHash(pubkeys[:])
+	commitment := types.ComputeScPubKeysHash(pubkeys[:])
+	fmt.Printf("curr_sync_committee hash: 0x%x\n", commitment)
 	for i := 0; i < 32; i++ {
 		witness.ScPubKeysHash[i] = uints.NewU8(commitment[i])
 	}
@@ -313,7 +315,8 @@ func TestScUpdateVerifierCircuitInvalidSignature(t *testing.T) {
 	}
 
 	// Compute commitment to sync committee public keys (PUBLIC INPUT)
-	commitment := types.ComputeSyncCommitteeHash(pubkeys[:])
+	commitment := types.ComputeScPubKeysHash(pubkeys[:])
+	fmt.Printf("curr_sync_committee hash: 0x%x\n", commitment)
 	for i := 0; i < 32; i++ {
 		witness.ScPubKeysHash[i] = uints.NewU8(commitment[i])
 	}
@@ -422,7 +425,8 @@ func TestScUpdateVerifierCircuitInvalidBlockRoot(t *testing.T) {
 	}
 
 	// Compute commitment to sync committee public keys (PUBLIC INPUT)
-	commitment := types.ComputeSyncCommitteeHash(pubkeys[:])
+	commitment := types.ComputeScPubKeysHash(pubkeys[:])
+	fmt.Printf("curr_sync_committee hash: 0x%x\n", commitment)
 	for i := 0; i < 32; i++ {
 		witness.ScPubKeysHash[i] = uints.NewU8(commitment[i])
 	}
@@ -497,7 +501,8 @@ func BenchmarkScUpdateVerifierCircuit(b *testing.B) {
 	}
 
 	// Compute commitment to sync committee public keys (PUBLIC INPUT)
-	commitment := types.ComputeSyncCommitteeHash(pubkeys[:])
+	commitment := types.ComputeScPubKeysHash(pubkeys[:])
+	fmt.Printf("curr_sync_committee hash: 0x%x\n", commitment)
 	for i := 0; i < 32; i++ {
 		witness.ScPubKeysHash[i] = uints.NewU8(commitment[i])
 	}

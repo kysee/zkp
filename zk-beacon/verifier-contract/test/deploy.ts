@@ -125,16 +125,20 @@ async function testLightClientUpdate(lightClientAddress: string) {
             slot, szNextSc,
             {gasLimit: 30000000});
         console.log("updateSyncCommittee - Estimated gas needed:", estimatedGas.toString());
-        console.log("In millions:", (Number(estimatedGas) / 1_000_000).toFixed(2), "M");
     } catch (err) {
         console.error("estimateGas failed:", err);
         process.exit(0);
     }
 
-    await lightClient.updateSyncCommittee(
+    const tx = await lightClient.updateSyncCommittee(
         proofData.proof, proofData.commitments, proofData.commitmentPok,
         slot, szNextSc,
         {gasLimit: 30000000});
+    const receipt = await tx.wait();
+    console.log("typeof gasUsed:", typeof receipt.gasUsed);
+    console.log("updateSyncCommittee - gasUsed:", receipt.gasUsed,`(${Number(receipt.gasUsed) / 1_000_000}M)`);
+    console.log("updateSyncCommittee - fee (ETH):", ethers.formatEther(receipt.gasUsed * BigInt(48e9)));
+
     const newPeriod = await lightClient.lastPeriod();
     const newScPubkeysHash = await lightClient.scPubkeysHashes(newPeriod);
     console.log("Stored newPeriod:", newPeriod);

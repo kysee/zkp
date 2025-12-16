@@ -21,7 +21,7 @@ func NewFileFetcher(filePath string) *FileFetcher {
 }
 
 // FetchUpdate reads and parses the light client update from the file
-func (f *FileFetcher) FetchUpdate() (*types.LightClientUpdate, error) {
+func (f *FileFetcher) FetchUpdate(period uint64) (*types.LightClientUpdate, error) {
 	// Read the file
 	data, err := os.ReadFile(f.FilePath)
 	if err != nil {
