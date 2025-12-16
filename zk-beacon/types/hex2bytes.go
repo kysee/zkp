@@ -21,7 +21,7 @@ func (b HexBytes) String() string {
 }
 
 func (hb HexBytes) MarshalJSON() ([]byte, error) {
-	s := strings.ToUpper(hex.EncodeToString(hb))
+	s := "0x" + hex.EncodeToString(hb)
 	jbz := make([]byte, len(s)+2)
 	jbz[0] = '"'
 	copy(jbz[1:], s)

@@ -44,7 +44,7 @@ func computeSigningRoot(header *zrntcommon.BeaconBlockHeader) ([]byte, error) {
 	return signingRoot[:], nil
 }
 
-func verifySyncAggregate(syncCommittee *types.SyncCommittee, update *types.LightClientUpdate) error {
+func verifySyncAggregate(syncCommittee *zrntcommon.SyncCommittee, update *types.LightClientUpdate) error {
 	// Parse sync committee bits
 	bits := types.ParseSyncCommitteeBits(update.Data.SyncAggregate.SyncCommitteeBits)
 	// Aggregate public keys using gnark-crypto
@@ -100,25 +100,25 @@ func verifySyncAggregate(syncCommittee *types.SyncCommittee, update *types.Light
 
 func TestVerifySyncAggregate(t *testing.T) {
 	// Load sync committee
-	syncCommitteeFile, err := os.ReadFile("data/curr-sc.json")
-	require.NoError(t, err, "Failed to read sync committee file")
-
-	var syncCommittee types.SyncCommittee
-	err = json.Unmarshal(syncCommitteeFile, &syncCommittee)
-	require.NoError(t, err, "Failed to parse sync committee JSON")
-
-	t.Logf("Loaded sync committee for period %s with %d pubkeys",
-		syncCommittee.Period, len(syncCommittee.Pubkeys))
+	update1104File, err := os.ReadFile("data/sc-update-1104.json")
+	require.NoError(t, err, "Failed to read file")
+	var update1104 types.LightClientUpdate
+	err = json.Unmarshal(update1104File, &update1104)
+	require.NoError(t, err, "Failed to parse sc-update-1104.json")
+	// At slot 1105, current sync committee
+	syncCommittee := update1104.Data.NextSyncCommittee
+	period := uint64(update1104.Data.AttestedHeader.Beacon.Slot / 8192)
+	t.Logf("Loaded light client update (period %d, curr_sync_committee at period %d)",
+		period, period+1)
 
 	// Load light client update
-	updateFile, err := os.ReadFile("data/lcupdate.json")
+	updateFile, err := os.ReadFile("data/sc-update-1105.json")
 	require.NoError(t, err, "Failed to read light client update file")
 
 	var update types.LightClientUpdate
 	err = json.Unmarshal(updateFile, &update)
 	require.NoError(t, err, "Failed to parse light client update JSON")
-
-	t.Logf("Loaded light client update for slot %s", update.Data.AttestedHeader.Beacon.Slot)
+	t.Logf("Loaded light client update (period %d, slot %s)", update.Data.AttestedHeader.Beacon.Slot/8192, update.Data.AttestedHeader.Beacon.Slot)
 
 	// Verify sync aggregate
 	err = verifySyncAggregate(&syncCommittee, &update)

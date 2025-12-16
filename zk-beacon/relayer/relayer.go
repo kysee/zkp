@@ -93,7 +93,7 @@ func Main() {
 	// Parse configuration from environment variables or command line args
 	config := Config{
 		DataSource:  getEnv("DATA_SOURCE", "file"),
-		FilePath:    getEnv("FILE_PATH", "data/lcupdate.json"),
+		FilePath:    getEnv("FILE_PATH", "data/sc-update-1105.json"),
 		RPCEndpoint: getEnv("RPC_ENDPOINT", ""),
 	}
 

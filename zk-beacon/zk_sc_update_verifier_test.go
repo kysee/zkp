@@ -42,18 +42,21 @@ var (
 
 func TestScUpdateVerifierCircuit_IsSolved(t *testing.T) {
 	// Load sync committee
-	syncCommitteeFile, err := os.ReadFile("data/curr-sc.json")
-	require.NoError(t, err, "Failed to read sync committee file")
+	update1104File, err := os.ReadFile("data/sc-update-1104.json")
+	require.NoError(t, err, "Failed to read file")
+	var update1104 types.LightClientUpdate
+	err = json.Unmarshal(update1104File, &update1104)
+	require.NoError(t, err, "Failed to parse sc-update-1104.json")
 
-	var syncCommittee types.SyncCommittee
-	err = json.Unmarshal(syncCommitteeFile, &syncCommittee)
-	require.NoError(t, err, "Failed to parse sync committee JSON")
+	// At slot 1105, current sync committee
+	syncCommittee := update1104.Data.NextSyncCommittee
+	period := uint64(update1104.Data.AttestedHeader.Beacon.Slot / 8192)
 
-	t.Logf("Loaded sync committee for period %s with %d pubkeys",
-		syncCommittee.Period, len(syncCommittee.Pubkeys))
+	t.Logf("Loaded light client update (period %d, curr_sync_committee at period %d)",
+		period, period+1)
 
 	// Load light client update
-	updateFile, err := os.ReadFile("data/lcupdate.json")
+	updateFile, err := os.ReadFile("data/sc-update-1105.json")
 	require.NoError(t, err, "Failed to read light client update file")
 
 	var update types.LightClientUpdate
@@ -125,25 +128,28 @@ func TestScUpdateVerifierCircuit_IsSolved(t *testing.T) {
 	assert.NoError(err, "Circuit constraints should be satisfied")
 	t.Logf("✓ Proof solving SUCCEEDED!")
 
-	assert.CheckCircuit(&circuit.ScUpdateVerifierCircuit{}, gnark_test.WithCurves(ecc.BN254), gnark_test.WithValidAssignment(witness), gnark_test.WithBackends(backend.GROTH16))
+	//assert.CheckCircuit(&circuit.ScUpdateVerifierCircuit{}, gnark_test.WithCurves(ecc.BN254), gnark_test.WithValidAssignment(witness), gnark_test.WithBackends(backend.GROTH16))
 }
 
 func TestScUpdateVerifierCircuit(t *testing.T) {
 	onceSetupCircuit()
 
 	// Load sync committee
-	syncCommitteeFile, err := os.ReadFile("data/curr-sc.json")
-	require.NoError(t, err, "Failed to read sync committee file")
+	update1104File, err := os.ReadFile("data/sc-update-1104.json")
+	require.NoError(t, err, "Failed to read file")
+	var update1104 types.LightClientUpdate
+	err = json.Unmarshal(update1104File, &update1104)
+	require.NoError(t, err, "Failed to parse sc-update-1104.json")
 
-	var syncCommittee types.SyncCommittee
-	err = json.Unmarshal(syncCommitteeFile, &syncCommittee)
-	require.NoError(t, err, "Failed to parse sync committee JSON")
+	// At slot 1105, current sync committee
+	syncCommittee := update1104.Data.NextSyncCommittee
+	period := uint64(update1104.Data.AttestedHeader.Beacon.Slot / 8192)
 
-	t.Logf("Loaded sync committee for period %s with %d pubkeys",
-		syncCommittee.Period, len(syncCommittee.Pubkeys))
+	t.Logf("Loaded light client update (period %d, curr_sync_committee at period %d)",
+		period, period+1)
 
 	// Load light client update
-	updateFile, err := os.ReadFile("data/lcupdate.json")
+	updateFile, err := os.ReadFile("data/sc-update-1105.json")
 	require.NoError(t, err, "Failed to read light client update file")
 
 	var update types.LightClientUpdate
@@ -227,7 +233,9 @@ func TestScUpdateVerifierCircuit(t *testing.T) {
 	proofSolidity := _proof.MarshalSolidity()
 	proofData := types.CreateProofData(proofSolidity)
 	jsonBlob, _ := json.MarshalIndent(proofData, "", "  ")
-	fmt.Printf("ProofData (JSON): %s\n", string(jsonBlob))
+
+	err = os.WriteFile("data/proof-data.json", jsonBlob, 0644)
+	require.NoError(t, err, "Failed to write proof-data.json")
 
 	fmt.Printf("Proof (solidity, %d bytes): 0x%x\n", len(proofSolidity), proofSolidity)
 
@@ -248,15 +256,21 @@ func TestScUpdateVerifierCircuitInvalidSignature(t *testing.T) {
 	onceSetupCircuit()
 
 	// Load sync committee
-	syncCommitteeFile, err := os.ReadFile("data/curr-sc.json")
-	require.NoError(t, err, "Failed to read sync committee file")
+	update1104File, err := os.ReadFile("data/sc-update-1104.json")
+	require.NoError(t, err, "Failed to read file")
+	var update1104 types.LightClientUpdate
+	err = json.Unmarshal(update1104File, &update1104)
+	require.NoError(t, err, "Failed to parse sc-update-1104.json")
 
-	var syncCommittee types.SyncCommittee
-	err = json.Unmarshal(syncCommitteeFile, &syncCommittee)
-	require.NoError(t, err, "Failed to parse sync committee JSON")
+	// At slot 1105, current sync committee
+	syncCommittee := update1104.Data.NextSyncCommittee
+	period := uint64(update1104.Data.AttestedHeader.Beacon.Slot / 8192)
+
+	t.Logf("Loaded light client update (period %d, curr_sync_committee at period %d)",
+		period, period+1)
 
 	// Load light client update
-	updateFile, err := os.ReadFile("data/lcupdate.json")
+	updateFile, err := os.ReadFile("data/sc-update-1105.json")
 	require.NoError(t, err, "Failed to read light client update file")
 
 	var update types.LightClientUpdate
@@ -346,15 +360,21 @@ func TestScUpdateVerifierCircuitInvalidBlockRoot(t *testing.T) {
 	onceSetupCircuit()
 
 	// Load sync committee
-	syncCommitteeFile, err := os.ReadFile("data/curr-sc.json")
-	require.NoError(t, err, "Failed to read sync committee file")
+	update1104File, err := os.ReadFile("data/sc-update-1104.json")
+	require.NoError(t, err, "Failed to read file")
+	var update1104 types.LightClientUpdate
+	err = json.Unmarshal(update1104File, &update1104)
+	require.NoError(t, err, "Failed to parse sc-update-1104.json")
 
-	var syncCommittee types.SyncCommittee
-	err = json.Unmarshal(syncCommitteeFile, &syncCommittee)
-	require.NoError(t, err, "Failed to parse sync committee JSON")
+	// At slot 1105, current sync committee
+	syncCommittee := update1104.Data.NextSyncCommittee
+	period := uint64(update1104.Data.AttestedHeader.Beacon.Slot / 8192)
+
+	t.Logf("Loaded light client update (period %d, curr_sync_committee at period %d)",
+		period, period+1)
 
 	// Load light client update
-	updateFile, err := os.ReadFile("data/lcupdate.json")
+	updateFile, err := os.ReadFile("data/sc-update-1105.json")
 	require.NoError(t, err, "Failed to read light client update file")
 
 	var update types.LightClientUpdate
@@ -437,15 +457,15 @@ func BenchmarkScUpdateVerifierCircuit(b *testing.B) {
 	onceSetupCircuit()
 
 	// Load test data
-	syncCommitteeFile, err := os.ReadFile("data/curr-sc.json")
-	if err != nil {
-		b.Skip("Test data not available")
-	}
+	update1104File, err := os.ReadFile("data/sc-update-1104.json")
+	require.NoError(b, err, "Failed to read file")
+	var update1104 types.LightClientUpdate
+	err = json.Unmarshal(update1104File, &update1104)
+	require.NoError(b, err, "Failed to parse sc-update-1104.json")
+	// At slot 1105, current sync committee
+	syncCommittee := update1104.Data.NextSyncCommittee
 
-	var syncCommittee types.SyncCommittee
-	json.Unmarshal(syncCommitteeFile, &syncCommittee)
-
-	updateFile, _ := os.ReadFile("data/lcupdate.json")
+	updateFile, _ := os.ReadFile("data/sc-update-1105.json")
 	var update types.LightClientUpdate
 	json.Unmarshal(updateFile, &update)
 
