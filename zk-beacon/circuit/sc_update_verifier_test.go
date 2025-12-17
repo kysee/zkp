@@ -562,7 +562,7 @@ func onceSetupCircuit() {
 	var err error
 
 	ccsPath := filepath.Join(rootDir, ".build/ScUpdateVerifierCircuit.ccs")
-	pkPath := filepath.Join(rootDir, "build/ScUpdateVerifierCircuit.pk")
+	pkPath := filepath.Join(rootDir, ".build/ScUpdateVerifierCircuit.pk")
 	vkPath := filepath.Join(rootDir, ".build/ScUpdateVerifierCircuit.vk")
 
 	// Step 1: Circuit compile
