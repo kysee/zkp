@@ -8,7 +8,7 @@ import (
 	"github.com/kysee/zkp/zk-beacon/types"
 )
 
-// FileFetcher implements LCUpdateFetcher by reading from a local JSON file
+// FileFetcher implements Fetcher by reading from a local JSON file
 type FileFetcher struct {
 	FilePath string
 }

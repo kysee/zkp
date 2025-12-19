@@ -7,7 +7,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strconv"
 	"time"
 
 	"github.com/consensys/gnark-crypto/ecc"
@@ -19,53 +18,16 @@ import (
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bls12381"
 	"github.com/consensys/gnark/std/math/uints"
 	"github.com/kysee/zkp/zk-beacon/circuit"
+	cfgtypes "github.com/kysee/zkp/zk-beacon/relayer/types"
 	"github.com/kysee/zkp/zk-beacon/types"
 	"github.com/protolambda/zrnt/eth2/configs"
 	"github.com/protolambda/ztyp/tree"
 )
 
-// Config holds the relayer configuration
-type Config struct {
-	RootDir string
-
-	// DataSource can be "file" or "rpc"
-	DataSource string
-	// FilePath is used when DataSource is "file"
-	FilePath string
-	// RPCEndpoint is used when DataSource is "rpc"
-	RPCEndpoint string
-	// InitPeriod is the period to start fetching updates from
-	InitPeriod uint64
-}
-
 // Main entry point for the relayer
-func Main() {
-	// Parse configuration from environment variables or command line args
-	config := Config{
-		RootDir:     getEnv("ROOT", "."),
-		DataSource:  getEnv("DATA_SOURCE", "file"),
-		FilePath:    getEnv("FILE_PATH", ""),
-		RPCEndpoint: getEnv("RPC_ENDPOINT", ""),
-		InitPeriod:  0,
-	}
-
-	// Override with command line arguments if provided
-	if len(os.Args) > 1 {
-		config.DataSource = os.Args[1]
-	}
-	if len(os.Args) > 2 {
-		if config.DataSource == "file" {
-			config.FilePath = os.Args[2]
-		} else {
-			config.RPCEndpoint = os.Args[2]
-		}
-	}
-	if len(os.Args) > 3 {
-		config.InitPeriod, _ = strconv.ParseUint(os.Args[3], 10, 64)
-	}
-
+func RelayerMain(config *cfgtypes.Config) {
 	// Create and run relayer
-	relayer, err := NewRelayer(config)
+	relayer, err := NewRelayer(config, NewAPIFetcher(config.RPCEndpoint))
 	if err != nil {
 		log.Fatalf("Failed to create relayer: %v", err)
 	}
@@ -82,8 +44,8 @@ func Main() {
 
 // Relayer is the main relayer struct
 type Relayer struct {
-	config           Config
-	fetcher          LCUpdateFetcher
+	config           *cfgtypes.Config
+	fetcher          cfgtypes.Fetcher
 	ccs              constraint.ConstraintSystem
 	pk               groth16.ProvingKey
 	scPubKeysHash    []byte
@@ -91,24 +53,7 @@ type Relayer struct {
 }
 
 // NewRelayer creates a new Relayer with the given configuration
-func NewRelayer(config Config) (*Relayer, error) {
-	var fetcher LCUpdateFetcher
-
-	switch config.DataSource {
-	case "file":
-		if config.FilePath == "" {
-			return nil, fmt.Errorf("file path is required when data source is 'file'")
-		}
-		fetcher = NewFileFetcher(config.FilePath)
-	case "rpc":
-		if config.RPCEndpoint == "" {
-			return nil, fmt.Errorf("RPC endpoint is required when data source is 'rpc'")
-		}
-		fetcher = NewAPIFetcher(config.RPCEndpoint)
-	default:
-		return nil, fmt.Errorf("invalid data source: %s (must be 'file' or 'rpc')", config.DataSource)
-	}
-
+func NewRelayer(config *cfgtypes.Config, fetcher cfgtypes.Fetcher) (*Relayer, error) {
 	_ = os.MkdirAll(config.RootDir, 0755)
 
 	return &Relayer{
@@ -125,7 +70,7 @@ func (r *Relayer) Run() error {
 	// Fetch first update to initialize currentScPubkeys
 	log.Printf("\n### Fetching initial update for period %d ###\n", period)
 	var err error
-	initialUpdate, err := r.fetcher.FetchUpdate(period)
+	initialUpdate, err := r.fetcher.ScUpdate(period)
 	if err != nil {
 		return fmt.Errorf("failed to fetch initial update: %w", err)
 	}
@@ -150,7 +95,7 @@ func (r *Relayer) Run() error {
 	for {
 		// Fetch update
 		log.Printf("\n### Fetching update for period %d ###\n", period)
-		update, err := r.fetcher.FetchUpdate(period)
+		update, err := r.fetcher.ScUpdate(period)
 		if err != nil {
 			log.Println("error", err)
 			time.Sleep(1000 * time.Millisecond)
@@ -207,14 +152,6 @@ func (r *Relayer) Run() error {
 
 		time.Sleep(1000 * time.Millisecond)
 	}
-}
-
-// getEnv retrieves an environment variable or returns a default value
-func getEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
 }
 
 // setupCircuit loads the compiled circuit and proving key from output directory
