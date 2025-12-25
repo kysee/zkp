@@ -12,7 +12,7 @@ To generate `data/proof-data.json`,
 
 ```bash
 cd circuit
-go test -run TestScUpdateVerifierCircuit$
+go test -run TestScUpdateVerifierCircuit$ -timeout 20m
 cd ..
 ```
 
